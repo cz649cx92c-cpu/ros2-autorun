@@ -373,6 +373,9 @@ static void signal_handler(int signum) {
 // Custom parameter monitoring function
 static void custom_parameter_monitor() {
     int last_save_map_val = -1;
+    auto save_request_seen_at = std::chrono::steady_clock::time_point{};
+    auto last_export_attempt_at = std::chrono::steady_clock::time_point{};
+    bool export_started = false;
     while (g_param_monitor_running && deviceConnected) {
         if (odinDevice) {
             if (g_custom_map_mode == 1) {
@@ -386,7 +389,31 @@ static void custom_parameter_monitor() {
                     //     ROS_INFO("save_map = %d", value);
                     // #endif
 
+                    auto now = std::chrono::steady_clock::now();
+                    if (last_save_map_val != 1 && value == 1) {
+                        save_request_seen_at = now;
+                        last_export_attempt_at = std::chrono::steady_clock::time_point{};
+                        export_started = false;
+                    }
+
+                    bool should_start_export = false;
                     if (last_save_map_val == 1 && value == 0) {
+                        should_start_export = true;
+                    } else if (value == 1 && !export_started && save_request_seen_at != std::chrono::steady_clock::time_point{}) {
+                        bool attempt_due = last_export_attempt_at == std::chrono::steady_clock::time_point{} ||
+                                           (now - last_export_attempt_at) >= std::chrono::seconds(3);
+                        if ((now - save_request_seen_at) >= std::chrono::seconds(2) && attempt_due) {
+                            should_start_export = true;
+                            #ifdef ROS2
+                                RCLCPP_WARN(rclcpp::get_logger("param_monitor"),
+                                            "save_map remains 1; proactively requesting mapping result transfer.");
+                            #else
+                                ROS_WARN("save_map remains 1; proactively requesting mapping result transfer.");
+                            #endif
+                        }
+                    }
+
+                    if (should_start_export) {
                         auto now = std::chrono::system_clock::now();
                         std::time_t t = std::chrono::system_clock::to_time_t(now);
                         std::tm tm{};
@@ -405,6 +432,7 @@ static void custom_parameter_monitor() {
                         #else
                             ROS_INFO("Map is saved on device, now transfering to [%s/%s]", map_dir.c_str(), map_name.c_str());
                         #endif
+                        last_export_attempt_at = std::chrono::steady_clock::now();
                         int ret = lidar_get_mapping_result(odinDevice, map_dir.c_str(), map_name.c_str());
                         if (ret < 0 ) {
                             #ifdef ROS2
@@ -413,6 +441,7 @@ static void custom_parameter_monitor() {
                                 ROS_WARN("Failed to get mapping result");
                             #endif
                         } else if (ret == 0) {
+                            export_started = true;
                             #ifdef ROS2
                                 RCLCPP_INFO(rclcpp::get_logger("param_monitor"), "map get start success, now transfering...");
                             #else
@@ -425,6 +454,9 @@ static void custom_parameter_monitor() {
                                 ROS_WARN("Failed to get mapping result, error code: %d", ret);
                             #endif
                         }
+                    }
+                    if (value == 0 && last_save_map_val == 0) {
+                        export_started = false;
                     }
                     last_save_map_val = value;
 

@@ -22,8 +22,8 @@ sys.path.insert(0, str(ROOT))
 import autorun.backend as core  # noqa: E402
 
 PROJECT_ROOT = Path(__file__).resolve().parent
-CATKIN_WS = Path("/root/catkin_ws")
-ODIN_ROOT = CATKIN_WS / "src" / "odin_ros_driver"
+BASE_CATKIN_WS = Path("/root/catkin_ws")
+ODIN_ROOT = BASE_CATKIN_WS / "src" / "odin_ros_driver"
 VENDOR_ROOT = PROJECT_ROOT / "vendor"
 SHADOW_ODIN_ROOT = VENDOR_ROOT / "odin_ros_driver"
 SHADOW_ODIN_CONFIG = SHADOW_ODIN_ROOT / "config" / "control_command.yaml"
@@ -33,9 +33,13 @@ LOG_DIR = PROJECT_ROOT / "logs"
 ROS_LOG_DIR = LOG_DIR / "ros"
 RUNTIME_DIR = PROJECT_ROOT / "runtime"
 TEMP_CONFIG_DIR = RUNTIME_DIR / "configs"
+SHADOW_CATKIN_WS = RUNTIME_DIR / "shadow_catkin_ws"
+SHADOW_CATKIN_SRC = SHADOW_CATKIN_WS / "src"
+SHADOW_CATKIN_SETUP = SHADOW_CATKIN_WS / "devel" / "setup.bash"
+SHADOW_HOST_SDK_BIN = SHADOW_CATKIN_WS / "devel" / "lib" / "odin_ros_driver" / "host_sdk_sample"
 LINERUN_ROOT = ROOT / "linerun"
 
-for path in (MISSIONS_DIR, LOG_DIR, ROS_LOG_DIR, RUNTIME_DIR, TEMP_CONFIG_DIR, VENDOR_ROOT):
+for path in (MISSIONS_DIR, LOG_DIR, ROS_LOG_DIR, RUNTIME_DIR, TEMP_CONFIG_DIR, VENDOR_ROOT, SHADOW_CATKIN_SRC):
     path.mkdir(parents=True, exist_ok=True)
 
 core.PROJECT_ROOT = PROJECT_ROOT
@@ -63,23 +67,23 @@ def _replace_yaml_scalar(text: str, key: str, value: str) -> str:
 
 
 def sync_shadow_package() -> None:
-    if SHADOW_ODIN_ROOT.exists():
-        shutil.rmtree(SHADOW_ODIN_ROOT)
-    shutil.copytree(
-        ODIN_ROOT,
-        SHADOW_ODIN_ROOT,
-        ignore=shutil.ignore_patterns(
-            ".git",
-            "__pycache__",
-            "build",
-            "devel",
-            "log",
-            "recorddata",
-            "map",
-            "*.pyc",
-            "*.o",
-        ),
-    )
+    if not SHADOW_ODIN_ROOT.exists():
+        shutil.copytree(
+            ODIN_ROOT,
+            SHADOW_ODIN_ROOT,
+            ignore=shutil.ignore_patterns(
+                ".git",
+                "__pycache__",
+                "build",
+                "devel",
+                "log",
+                "recorddata",
+                "map",
+                "*.pyc",
+                "*.o",
+            ),
+        )
+        core.log(f"Shadow odin_ros_driver initialized from {ODIN_ROOT}")
     launch_text = SHADOW_ODIN_LAUNCH.read_text(encoding="utf-8")
     launch_text, count = re.subn(
         r"\s*<!-- Launch RViz with configuration -->\s*<node name=\"rviz\" pkg=\"rviz\" type=\"rviz\" args=\"-d \$\(arg rviz_config\)\" output=\"screen\"/>\s*",
@@ -90,7 +94,61 @@ def sync_shadow_package() -> None:
     if count:
         SHADOW_ODIN_LAUNCH.write_text(launch_text, encoding="utf-8")
         core.log("RViz launch node removed from the shadow odin_ros_driver launch file.")
+    _ensure_shadow_workspace_built()
     core.log(f"Shadow odin_ros_driver prepared: {SHADOW_ODIN_ROOT}")
+
+
+def _shadow_package_mtime() -> float:
+    latest = 0.0
+    for path in SHADOW_ODIN_ROOT.rglob("*"):
+        if path.is_file():
+            try:
+                latest = max(latest, path.stat().st_mtime)
+            except OSError:
+                continue
+    return latest
+
+
+def _ensure_shadow_workspace_built() -> None:
+    package_link = SHADOW_CATKIN_SRC / "odin_ros_driver"
+    if package_link.is_symlink():
+        if package_link.resolve() != SHADOW_ODIN_ROOT.resolve():
+            package_link.unlink()
+    elif package_link.exists():
+        if package_link.is_dir():
+            shutil.rmtree(package_link)
+        else:
+            package_link.unlink()
+    if not package_link.exists():
+        package_link.symlink_to(SHADOW_ODIN_ROOT, target_is_directory=True)
+
+    source_mtime = _shadow_package_mtime()
+    binary_mtime = SHADOW_HOST_SDK_BIN.stat().st_mtime if SHADOW_HOST_SDK_BIN.exists() else 0.0
+    if SHADOW_HOST_SDK_BIN.exists() and binary_mtime >= source_mtime:
+        return
+
+    build_log = LOG_DIR / f"shadow_build_{time.strftime('%Y%m%d_%H%M%S')}.log"
+    core.log("Building patched shadow odin_ros_driver workspace...")
+    cmd = [
+        "/bin/bash",
+        "-lc",
+        (
+            f"source /opt/ros/noetic/setup.bash && "
+            f"cd {SHADOW_CATKIN_WS} && "
+            "catkin_make --pkg odin_ros_driver -DPYTHON_EXECUTABLE=/usr/bin/python3"
+        ),
+    ]
+    result = subprocess.run(
+        cmd,
+        check=False,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+    build_log.write_text(result.stdout or "", encoding="utf-8")
+    if result.returncode != 0 or not SHADOW_HOST_SDK_BIN.exists():
+        raise RuntimeError(f"Failed to build patched shadow odin_ros_driver. See {build_log}")
+    core.log(f"Patched shadow odin_ros_driver built successfully. Build log: {build_log}")
 
 
 def write_odin_config(mode: int, *, map_path: Path | None = None, map_name: str = "") -> Path:
@@ -136,7 +194,11 @@ def request_map_save(target_file: Path, timeout_sec: float = 25.0, raw_log: Path
     last_send_at = time.monotonic()
     command_ack = False
     transfer_started = False
+    last_status_log_at = 0.0
+    resend_interval_sec = 4.0
+    post_ack_resend_grace_sec = 6.0
     while time.monotonic() < deadline:
+        now = time.monotonic()
         if raw_log is not None and raw_log.exists():
             try:
                 log_text = raw_log.read_text(encoding="utf-8", errors="ignore")
@@ -149,10 +211,14 @@ def request_map_save(target_file: Path, timeout_sec: float = 25.0, raw_log: Path
         if not command_ack and not command_file.exists():
             command_ack = True
             core.log("Odin consumed the save_map command file.")
-        if not command_ack and (time.monotonic() - last_send_at) >= 3.0:
+        if not command_ack and (now - last_send_at) >= 3.0:
             _send_save_command()
-            last_send_at = time.monotonic()
+            last_send_at = now
             core.log("Resent Odin save_map=1 command.")
+        elif command_ack and not transfer_started and (now - last_send_at) >= post_ack_resend_grace_sec:
+            _send_save_command()
+            last_send_at = now
+            core.log("Save command was acknowledged but map export has not started yet. Resending save_map=1.")
         if target_file.exists():
             size = target_file.stat().st_size
             if size > 0 and size == last_size:
@@ -166,6 +232,10 @@ def request_map_save(target_file: Path, timeout_sec: float = 25.0, raw_log: Path
             if transfer_started and size > 0 and stable_hits >= 1:
                 core.log(f"Map file transfer started and file is present: {target_file} ({size} bytes)")
                 return True
+        if not transfer_started and (now - last_status_log_at) >= resend_interval_sec:
+            status = "acknowledged" if command_ack else "pending"
+            core.log(f"Waiting for Odin map export to start ({status}); current target: {target_file}")
+            last_status_log_at = now
         time.sleep(1.0)
     return target_file.exists() and target_file.stat().st_size > 0
 
@@ -227,12 +297,13 @@ class OdinConfigOverride:
 class OdinLaunchProcess(core.ManagedProcess):
     def __init__(self, config_path: Path, log_path: Path) -> None:
         del config_path
+        setup_bash = SHADOW_CATKIN_SETUP if SHADOW_CATKIN_SETUP.exists() else BASE_CATKIN_WS / "devel" / "setup.bash"
         cmd = [
             "/bin/bash",
             "-lc",
             (
                 f"source /opt/ros/noetic/setup.bash && "
-                f"source {CATKIN_WS / 'devel' / 'setup.bash'} && "
+                f"source {setup_bash} && "
                 f"export ROS_PACKAGE_PATH={VENDOR_ROOT}:$ROS_PACKAGE_PATH && "
                 f"export ROS_LOG_DIR={ROS_LOG_DIR} && "
                 f"exec roslaunch {SHADOW_ODIN_LAUNCH}"
@@ -423,6 +494,7 @@ class LineRunRosBridge:
 
 class LineRunProcess(core.ManagedProcess):
     def __init__(self, args: argparse.Namespace, log_path: Path) -> None:
+        line_camera_fps = int(round(float(args.line_camera_fps)))
         cmd = [
             sys.executable,
             str(LINERUN_ROOT / "plant_row_runner.py"),
@@ -439,7 +511,7 @@ class LineRunProcess(core.ManagedProcess):
             "--camera-height",
             str(args.line_camera_height),
             "--camera-fps",
-            str(args.line_camera_fps),
+            str(line_camera_fps),
             "--camera-fourcc",
             args.line_camera_fourcc,
             "--max-fps",
@@ -458,6 +530,26 @@ class LineRunProcess(core.ManagedProcess):
             str(args.line_kp_heading),
             "--max-wz",
             str(args.line_max_wz),
+            "--reverse-wz-sign",
+            "1.0",
+            "--reverse-turn-scale",
+            "1.0",
+            "--reverse-kp-offset",
+            str(args.line_kp_offset),
+            "--reverse-kp-heading",
+            str(args.line_kp_heading),
+            "--reverse-max-wz",
+            str(args.line_max_wz),
+            "--reverse-control-lookahead-ratio",
+            "0.78",
+            "--reverse-crossing-reset-norm",
+            "0.16",
+            "--reverse-side-avoid-gain",
+            "0.0",
+            "--reverse-near-gain",
+            "0.0",
+            "--reverse-heading-turn-gain",
+            "0.0",
             "--period-ms",
             str(args.line_period_ms),
             "--interface",
@@ -516,8 +608,8 @@ def _compute_global_command(
     motion: dict[str, Any],
     gear: str,
     send_state: core.MotionSendState,
+    tracking_heading: float,
 ) -> tuple[float, float, float, float, float]:
-    tracking_heading = core._tracking_heading([target, target], [motion, motion], 0, gear)
     dist = pose.distance_to(target)
     forward_err, lateral_err = core._body_frame_error(pose, target)
     heading_err = core.normalize_angle(tracking_heading - pose.yaw)
@@ -586,6 +678,50 @@ def _build_body_command(
     return core.BodyCommand(gear=gear, vx=vx, vy=0.0, wz=wz)
 
 
+def _motion_segment_mode(motion: dict[str, Any], current_gear: str | None = None) -> str:
+    gear = core._resolve_replay_gear(motion, current_gear)
+    if gear == "crab":
+        return "crab"
+    vx = _safe_float(motion.get("vx"), 0.0)
+    if vx < -0.03:
+        return "reverse"
+    if vx > 0.03:
+        return "forward"
+    return f"hold:{gear}"
+
+
+def _find_tracking_index_same_mode(
+    points: list[core.Pose2D],
+    motions: list[dict[str, Any]],
+    current_index: int,
+    pose: core.Pose2D,
+    current_gear: str | None,
+    window: int = 12,
+) -> int:
+    if not points:
+        return 0
+    start = max(0, current_index)
+    end = min(len(points), current_index + max(2, window))
+    mode = _motion_segment_mode(motions[min(start, len(motions) - 1)], current_gear)
+    best_same_index = current_index
+    best_same_dist = float("inf")
+    best_any_index = current_index
+    best_any_dist = float("inf")
+    for idx in range(start, end):
+        dist = pose.distance_to(points[idx])
+        if dist < best_any_dist:
+            best_any_dist = dist
+            best_any_index = idx
+        if _motion_segment_mode(motions[min(idx, len(motions) - 1)], current_gear) != mode:
+            continue
+        if dist < best_same_dist:
+            best_same_dist = dist
+            best_same_index = idx
+    if best_same_dist < float("inf"):
+        return best_same_index
+    return best_any_index
+
+
 def cmd_hybrid_autorun(args: argparse.Namespace) -> int:
     core.ensure_can_ready(args.channel, args.bitrate)
     mission = json.loads(Path(args.mission).read_text(encoding="utf-8"))
@@ -629,6 +765,7 @@ def cmd_hybrid_autorun(args: argparse.Namespace) -> int:
     linerun_proc: LineRunProcess | None = None
     ros_bridge: LineRunRosBridge | None = None
     line_log = LOG_DIR / f"linerun_{time.strftime('%Y%m%d_%H%M%S')}.log"
+    use_local_guidance = max(0.0, float(args.local_weight_in_row)) > 1e-6
     try:
         if getattr(args, "reuse_localization", False):
             core.log("Hybrid autorun requested. Reusing the active localization session.")
@@ -653,11 +790,14 @@ def cmd_hybrid_autorun(args: argparse.Namespace) -> int:
         if projection.enabled and abs(projection.anchor_roll_rad) < 1e-9 and abs(projection.anchor_pitch_rad) < 1e-9:
             projection = core.anchor_projection_to_pose(projection, pose_raw)
         pose = core.project_pose_to_ground(pose_raw, projection)
-        linerun_proc = LineRunProcess(args, line_log)
-        linerun_proc.start()
-        core.log(f"linerun subprocess started. Raw log: {line_log}")
-        ros_bridge = LineRunRosBridge(args.ros_cmd_vel_topic, args.ros_status_topic, args.ros_drive_mode_topic)
-        time.sleep(1.0)
+        if use_local_guidance:
+            linerun_proc = LineRunProcess(args, line_log)
+            linerun_proc.start()
+            core.log(f"linerun subprocess started. Raw log: {line_log}")
+            ros_bridge = LineRunRosBridge(args.ros_cmd_vel_topic, args.ros_status_topic, args.ros_drive_mode_topic)
+            time.sleep(1.0)
+        else:
+            core.log("Hybrid autorun local weight is 0. linerun is disabled; running pure global replay.")
         if used_fallback:
             core.log("Hybrid autorun fallback: mission motion data was missing, using path-derived motion estimates.")
         if crab_fix_count:
@@ -672,7 +812,6 @@ def cmd_hybrid_autorun(args: argparse.Namespace) -> int:
         current_gear = None
         while not core.STOP_REQUESTED and start_index < len(points):
             assert tracker is not None
-            assert ros_bridge is not None
             pose_raw = tracker.lookup()
             if pose_raw is None:
                 time.sleep(0.05)
@@ -686,15 +825,16 @@ def cmd_hybrid_autorun(args: argparse.Namespace) -> int:
                     send_state.remote_paused = True
                     send_state.reset_motion()
                     core.log("Remote controller took over. Hybrid autorun paused and progress is preserved.")
-                ros_bridge.publish_mode(
-                    enable=False,
-                    reverse=False,
-                    cruise_vx=args.line_cruise_vx,
-                    gear="4t4d",
-                    low_beam=args.line_low_beam,
-                    target_center_offset_px=args.line_target_center_offset_px,
-                    vehicle_direction_angle_deg=args.line_vehicle_direction_angle_deg,
-                )
+                if ros_bridge is not None:
+                    ros_bridge.publish_mode(
+                        enable=False,
+                        reverse=False,
+                        cruise_vx=args.line_cruise_vx,
+                        gear="4t4d",
+                        low_beam=args.line_low_beam,
+                        target_center_offset_px=args.line_target_center_offset_px,
+                        vehicle_direction_angle_deg=args.line_vehicle_direction_angle_deg,
+                    )
                 time.sleep(0.10)
                 continue
             if send_state.remote_paused:
@@ -709,14 +849,52 @@ def cmd_hybrid_autorun(args: argparse.Namespace) -> int:
             start_index = max(start_index, nearest_index)
             motion_here = motions[min(start_index, len(motions) - 1)]
             reversing_here = _safe_float(motion_here.get("vx"), 0.0) < -0.03
-            base_lookahead = 2 if core._resolve_replay_gear(motion_here, current_gear) == "crab" else (
-                3 if reversing_here else (4 if abs(_safe_float(motion_here.get("wz"), 0.0)) < 10.0 else 3)
-            )
-            target_index = min(len(points) - 1, start_index + base_lookahead)
-            target = points[target_index]
-            motion = motions[target_index]
-            gear = core._resolve_replay_gear(motion, current_gear)
-            row_switch_mode = gear == "crab" or reversing_here or abs(_safe_float(motion.get("vy"), 0.0)) > 0.05
+            if send_state.crab_locked_until >= start_index and send_state.crab_target_index >= 0:
+                gear = "crab"
+                target_index = core._select_crab_progress_target(
+                    start_index,
+                    send_state.crab_locked_until,
+                    max(start_index + 1, send_state.crab_target_index),
+                )
+                target = points[target_index]
+                motion = motions[target_index]
+                if core._resolve_replay_gear(motion, None) != "crab":
+                    send_state.crab_locked_until = -1
+                    send_state.crab_target_index = -1
+                    gear = core._resolve_replay_gear(motion_here, current_gear)
+                    base_lookahead = 2 if gear == "crab" else (
+                        3 if reversing_here else (4 if abs(_safe_float(motion_here.get("wz"), 0.0)) < 10.0 else 3)
+                    )
+                    target_index = min(len(points) - 1, start_index + base_lookahead)
+                    target = points[target_index]
+                    motion = motions[target_index]
+            else:
+                base_lookahead = 2 if core._resolve_replay_gear(motion_here, current_gear) == "crab" else (
+                    3 if reversing_here else (4 if abs(_safe_float(motion_here.get("wz"), 0.0)) < 10.0 else 3)
+                )
+                target_index = min(len(points) - 1, start_index + base_lookahead)
+                target = points[target_index]
+                motion = motions[target_index]
+                gear = core._resolve_replay_gear(motion, current_gear)
+            if gear != "crab":
+                upcoming_crab = core._find_future_gear_start(motions, start_index, "crab", limit=20)
+                if upcoming_crab is not None:
+                    crab_entry = points[upcoming_crab]
+                    if pose.distance_to(crab_entry) <= 0.35:
+                        crab_end = core._find_gear_segment_end(motions, upcoming_crab, "crab")
+                        crab_active = core._find_first_active_crab_index(motions, upcoming_crab, crab_end)
+                        crab_active_end = core._find_last_active_crab_index(motions, crab_active, crab_end)
+                        send_state.crab_locked_until = crab_active_end
+                        send_state.crab_target_index = crab_active
+                        target_index = core._select_crab_progress_target(
+                            start_index,
+                            crab_active_end,
+                            crab_active,
+                        )
+                        target = points[target_index]
+                        motion = motions[target_index]
+                        gear = "crab"
+            row_switch_mode = gear == "crab" or abs(_safe_float(motion.get("vy"), 0.0)) > 0.05
             near_finish = target_index >= len(points) - 4
 
             if gear != current_gear:
@@ -724,6 +902,25 @@ def cmd_hybrid_autorun(args: argparse.Namespace) -> int:
                 current_gear = gear
 
             if gear == "crab":
+                if dist + 0.03 < send_state.crab_best_dist:
+                    send_state.crab_best_dist = dist
+                    send_state.crab_diverge_count = 0
+                elif dist > send_state.crab_best_dist + 0.20:
+                    send_state.crab_diverge_count += 1
+                else:
+                    send_state.crab_diverge_count = max(0, send_state.crab_diverge_count - 1)
+                if send_state.crab_diverge_count >= 6:
+                    core.log(
+                        f"Hybrid autorun crab fallback: target distance kept increasing "
+                        f"(best={send_state.crab_best_dist:.2f}, now={dist:.2f}). Returning to 4t4d tracking."
+                    )
+                    send_state.crab_locked_until = -1
+                    send_state.crab_target_index = -1
+                    send_state.crab_best_dist = float("inf")
+                    send_state.crab_diverge_count = 0
+                    current_gear = None
+                    send_state.last_sent_gear = None
+                    continue
                 ref_point = points[start_index]
                 axis_dx = target.x - ref_point.x
                 axis_dy = target.y - ref_point.y
@@ -731,10 +928,20 @@ def cmd_hybrid_autorun(args: argparse.Namespace) -> int:
                 if abs(axis_dy) >= abs(axis_dx):
                     if core._axis_progress_reached(pose.y, target.y, axis_dy, 0.10):
                         start_index = min(len(points) - 1, target_index + 1)
+                        if start_index > send_state.crab_locked_until:
+                            send_state.crab_locked_until = -1
+                            send_state.crab_target_index = -1
+                            send_state.crab_best_dist = float("inf")
+                            send_state.crab_diverge_count = 0
                         continue
                 else:
                     if core._axis_progress_reached(pose.x, target.x, axis_dx, 0.10):
                         start_index = min(len(points) - 1, target_index + 1)
+                        if start_index > send_state.crab_locked_until:
+                            send_state.crab_locked_until = -1
+                            send_state.crab_target_index = -1
+                            send_state.crab_best_dist = float("inf")
+                            send_state.crab_diverge_count = 0
                         continue
                 if near_finish and dist < 0.10:
                     core._hold_current_gear_stop(controller, send_state, current_gear)
@@ -745,8 +952,21 @@ def cmd_hybrid_autorun(args: argparse.Namespace) -> int:
                 tracking_heading = core._tracking_heading(points, motions, target_index, gear)
                 yaw_err = core.normalize_angle(tracking_heading - pose.yaw)
                 if dist < 0.12 and abs(math.degrees(yaw_err)) < 12.0:
+                    send_state.crab_best_dist = float("inf")
+                    send_state.crab_diverge_count = 0
                     start_index = min(len(points) - 1, target_index + 1)
                     continue
+                _, lateral_err = core._body_frame_error(pose, target)
+                if abs(lateral_err) > 0.07:
+                    protected_target_index = min(len(points) - 1, start_index + 2)
+                    if protected_target_index != target_index:
+                        target_index = protected_target_index
+                        target = points[target_index]
+                        motion = motions[target_index]
+                        near_finish = target_index >= len(points) - 4
+                        tracking_heading = core._tracking_heading(points, motions, target_index, gear)
+                        yaw_err = core.normalize_angle(tracking_heading - pose.yaw)
+                        dist = pose.distance_to(target)
 
             g_vx, g_vy, g_wz, dist, heading_err_deg = _compute_global_command(
                 pose,
@@ -754,36 +974,48 @@ def cmd_hybrid_autorun(args: argparse.Namespace) -> int:
                 motion,
                 gear,
                 send_state,
+                tracking_heading,
             )
             if near_finish and dist < 0.10:
                 core._hold_current_gear_stop(controller, send_state, current_gear)
                 core.log(f"Hybrid autorun reached final area near mission end (dist={dist:.2f}). Stopping without final alignment.")
                 break
 
-            local_enable = not row_switch_mode
-            ros_bridge.publish_mode(
-                enable=local_enable,
-                reverse=False,
-                cruise_vx=args.line_cruise_vx,
-                gear="4t4d",
-                low_beam=args.line_low_beam,
-                target_center_offset_px=args.line_target_center_offset_px,
-                vehicle_direction_angle_deg=args.line_vehicle_direction_angle_deg,
-            )
-            local_status = ros_bridge.status_snapshot()
-            local_cmd = ros_bridge.cmd_snapshot()
+            configured_local_weight = max(0.0, min(1.0, float(args.local_weight_in_row)))
+            configured_global_weight = max(0.0, min(1.0, float(args.global_weight_in_row)))
+            local_enabled_by_weight = configured_local_weight > 1e-6
+            local_enable = (not row_switch_mode) and local_enabled_by_weight
+            if ros_bridge is not None:
+                ros_bridge.publish_mode(
+                    enable=local_enable,
+                    reverse=reversing_here,
+                    cruise_vx=args.line_cruise_vx,
+                    gear="4t4d",
+                    low_beam=args.line_low_beam,
+                    target_center_offset_px=args.line_target_center_offset_px,
+                    vehicle_direction_angle_deg=args.line_vehicle_direction_angle_deg,
+                )
+                local_status = ros_bridge.status_snapshot()
+                local_cmd = ros_bridge.cmd_snapshot()
+            else:
+                local_status = LineStatus()
+                local_cmd = TwistCommand()
 
             if row_switch_mode:
                 global_weight = 1.0
                 local_weight = 0.0
                 mode_name = "global-row-switch"
+            elif not local_enabled_by_weight:
+                global_weight = 1.0
+                local_weight = 0.0
+                mode_name = "global-only"
             elif local_status.obstacle_blocked:
                 global_weight = 0.0
                 local_weight = 1.0
                 mode_name = "local-block-stop"
             elif local_status.fresh and local_status.state == "TRACK" and local_cmd.fresh:
-                global_weight = max(0.0, min(1.0, float(args.global_weight_in_row)))
-                local_weight = max(0.0, min(1.0, float(args.local_weight_in_row)))
+                global_weight = configured_global_weight
+                local_weight = configured_local_weight
                 total = global_weight + local_weight
                 if total <= 1e-6:
                     global_weight = 1.0
@@ -806,7 +1038,12 @@ def cmd_hybrid_autorun(args: argparse.Namespace) -> int:
                 local_weight,
             )
             body_cmd.gear = gear
-            if gear == "crab" and dist < 0.16 and abs(body_cmd.vy) < 0.10:
+            if (
+                gear == "crab"
+                and dist < 0.16
+                and abs(body_cmd.vy) < 0.10
+                and target_index >= max(start_index + 1, send_state.crab_locked_until - 1)
+            ):
                 start_index = min(len(points) - 1, target_index + 1)
                 continue
             body_cmd.vx, body_cmd.vy, body_cmd.wz = core._smooth_drive_command(
@@ -901,7 +1138,7 @@ def _add_hybrid_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--line-max-fps", type=float, default=9.0)
     parser.add_argument("--line-camera-width", type=int, default=1024)
     parser.add_argument("--line-camera-height", type=int, default=768)
-    parser.add_argument("--line-camera-fps", type=int, default=10)
+    parser.add_argument("--line-camera-fps", type=float, default=10.0)
     parser.add_argument("--line-camera-fourcc", default="MJPG")
     parser.add_argument("--line-target-center-offset-px", type=float, default=0.0)
     parser.add_argument("--line-vehicle-direction-angle-deg", type=float, default=0.0)

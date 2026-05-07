@@ -1250,6 +1250,10 @@ class MainWindow:
 
     def _hybrid_args(self) -> list[str]:
         self._sync_line_resolution_vars()
+        try:
+            line_camera_fps = str(int(round(float(self.line_camera_fps_var.get().strip() or "10"))))
+        except Exception:
+            line_camera_fps = "10"
         args = [
             *self._projection_args(),
             "autorun",
@@ -1260,7 +1264,7 @@ class MainWindow:
             "--line-cruise-vx", self.line_cruise_vx_var.get().strip() or "0.12",
             "--line-camera-width", self.line_camera_width_var.get().strip() or "1024",
             "--line-camera-height", self.line_camera_height_var.get().strip() or "768",
-            "--line-camera-fps", self.line_camera_fps_var.get().strip() or "10",
+            "--line-camera-fps", line_camera_fps,
             "--line-camera-fourcc", self.line_camera_fourcc_var.get().strip() or "MJPG",
             "--line-max-fps", self.line_max_fps_var.get().strip() or "9.0",
             "--line-target-center-offset-px", self.line_target_center_offset_px_var.get().strip() or "0",

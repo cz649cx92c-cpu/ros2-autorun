@@ -1,0 +1,2142 @@
+{
+  "mission_name": "mission_20260507_114710",
+  "created_at": "2026-05-07T11:49:30",
+  "bound_map_db": "/root/ugv/autorun_final/maps/map_20260507_114710/map_20260507_114710.bin",
+  "map_frame": "map",
+  "base_frame": "odin1_base_link",
+  "sample_period": 0.2,
+  "ground_projection": {
+    "enabled": true,
+    "sensor_height_m": 1.1,
+    "body_x_offset_m": 0.0,
+    "body_y_offset_m": 0.0,
+    "roll_gain": 0.8,
+    "pitch_gain": 1.0,
+    "anchor_roll_rad": -0.00856513700345065,
+    "anchor_pitch_rad": 0.05435351734045383
+  },
+  "start_pose": {
+    "x": -0.055935909273865714,
+    "y": 0.19633153855867969,
+    "z": -1.0791109320291814,
+    "yaw": -0.6252511482128705,
+    "qx": 0.004283873901000001,
+    "qy": 0.027172737693,
+    "qz": -0.3073311558400001,
+    "qw": 0.951203799054
+  },
+  "samples": [
+    {
+      "index": 0,
+      "t": 184.742,
+      "pose": {
+        "x": -0.055935909273865714,
+        "y": 0.19633153855867969,
+        "z": -1.0791109320291814,
+        "yaw_deg": -35.82425192830619
+      },
+      "snapshot": {
+        "time": "11:49:20",
+        "motion": {
+          "gear": "4t4d",
+          "vx_mps": 0.103,
+          "vy_mps": 0.0,
+          "wz_dps": 0.0
+        },
+        "steering": {
+          "gear": "4t4d",
+          "wheel_speed_mps": 0.103,
+          "wheel_angle_deg": 0.0
+        },
+        "battery": {
+          "soc_pct": 84,
+          "voltage_v": null,
+          "current_a": null,
+          "capacity_ah": null,
+          "charging": false,
+          "max_temp_c": 30.0,
+          "min_temp_c": 30.0
+        },
+        "io": {
+          "estop": false,
+          "remote_control": true,
+          "charge_dock": false,
+          "manual_charger": false,
+          "light_mode": "auto",
+          "unlock_ok": false
+        },
+        "error": {
+          "level": null,
+          "type": null,
+          "component": null,
+          "code": null
+        },
+        "ultrasonic_mm": {}
+      }
+    },
+    {
+      "index": 1,
+      "t": 184.963,
+      "pose": {
+        "x": -0.05669351768122396,
+        "y": 0.19671993572515067,
+        "z": -1.0796610387825887,
+        "yaw_deg": -35.81950312402997
+      },
+      "snapshot": {
+        "time": "11:49:21",
+        "motion": {
+          "gear": "4t4d",
+          "vx_mps": 0.095,
+          "vy_mps": 0.0,
+          "wz_dps": 0.0
+        },
+        "steering": {
+          "gear": "4t4d",
+          "wheel_speed_mps": 0.095,
+          "wheel_angle_deg": 0.0
+        },
+        "battery": {
+          "soc_pct": 84,
+          "voltage_v": null,
+          "current_a": null,
+          "capacity_ah": null,
+          "charging": false,
+          "max_temp_c": 30.0,
+          "min_temp_c": 30.0
+        },
+        "io": {
+          "estop": false,
+          "remote_control": true,
+          "charge_dock": false,
+          "manual_charger": false,
+          "light_mode": "auto",
+          "unlock_ok": false
+        },
+        "error": {
+          "level": "none",
+          "type": "none",
+          "component": "default",
+          "code": "0x000000"
+        },
+        "ultrasonic_mm": {}
+      }
+    },
+    {
+      "index": 2,
+      "t": 185.184,
+      "pose": {
+        "x": -0.056546037018741564,
+        "y": 0.19634252873841798,
+        "z": -1.079551040139151,
+        "yaw_deg": -35.81922577900397
+      },
+      "snapshot": {
+        "time": "11:49:21",
+        "motion": {
+          "gear": "4t4d",
+          "vx_mps": 0.096,
+          "vy_mps": 0.0,
+          "wz_dps": 0.0
+        },
+        "steering": {
+          "gear": "4t4d",
+          "wheel_speed_mps": 0.096,
+          "wheel_angle_deg": 0.0
+        },
+        "battery": {
+          "soc_pct": 84,
+          "voltage_v": 28.38,
+          "current_a": -1.5,
+          "capacity_ah": 16.8,
+          "charging": false,
+          "max_temp_c": 30.0,
+          "min_temp_c": 30.0
+        },
+        "io": {
+          "estop": false,
+          "remote_control": true,
+          "charge_dock": false,
+          "manual_charger": false,
+          "light_mode": "auto",
+          "unlock_ok": false
+        },
+        "error": {
+          "level": "none",
+          "type": "none",
+          "component": "default",
+          "code": "0x000000"
+        },
+        "ultrasonic_mm": {}
+      }
+    },
+    {
+      "index": 3,
+      "t": 185.396,
+      "pose": {
+        "x": -0.05649194715733282,
+        "y": 0.19638534108652397,
+        "z": -1.079809821807032,
+        "yaw_deg": -35.82087116185094
+      },
+      "snapshot": {
+        "time": "11:49:21",
+        "motion": {
+          "gear": "4t4d",
+          "vx_mps": 0.093,
+          "vy_mps": 0.0,
+          "wz_dps": 0.0
+        },
+        "steering": {
+          "gear": "4t4d",
+          "wheel_speed_mps": 0.093,
+          "wheel_angle_deg": 0.0
+        },
+        "battery": {
+          "soc_pct": 84,
+          "voltage_v": 28.38,
+          "current_a": -1.5,
+          "capacity_ah": 16.8,
+          "charging": false,
+          "max_temp_c": 30.0,
+          "min_temp_c": 30.0
+        },
+        "io": {
+          "estop": false,
+          "remote_control": true,
+          "charge_dock": false,
+          "manual_charger": false,
+          "light_mode": "auto",
+          "unlock_ok": false
+        },
+        "error": {
+          "level": "none",
+          "type": "none",
+          "component": "default",
+          "code": "0x000000"
+        },
+        "ultrasonic_mm": {}
+      }
+    },
+    {
+      "index": 4,
+      "t": 185.614,
+      "pose": {
+        "x": -0.056369597352232084,
+        "y": 0.19630016632314026,
+        "z": -1.0799511409166587,
+        "yaw_deg": -35.823651502925934
+      },
+      "snapshot": {
+        "time": "11:49:21",
+        "motion": {
+          "gear": "4t4d",
+          "vx_mps": 0.07,
+          "vy_mps": 0.0,
+          "wz_dps": 0.0
+        },
+        "steering": {
+          "gear": "4t4d",
+          "wheel_speed_mps": 0.07,
+          "wheel_angle_deg": 0.0
+        },
+        "battery": {
+          "soc_pct": 84,
+          "voltage_v": 28.38,
+          "current_a": -1.5,
+          "capacity_ah": 16.8,
+          "charging": false,
+          "max_temp_c": 30.0,
+          "min_temp_c": 30.0
+        },
+        "io": {
+          "estop": false,
+          "remote_control": true,
+          "charge_dock": false,
+          "manual_charger": false,
+          "light_mode": "auto",
+          "unlock_ok": false
+        },
+        "error": {
+          "level": "none",
+          "type": "none",
+          "component": "default",
+          "code": "0x000000"
+        },
+        "ultrasonic_mm": {}
+      }
+    },
+    {
+      "index": 5,
+      "t": 185.835,
+      "pose": {
+        "x": -0.0561870110110492,
+        "y": 0.19628874506644015,
+        "z": -1.0799623497282633,
+        "yaw_deg": -35.82343424771088
+      },
+      "snapshot": {
+        "time": "11:49:22",
+        "motion": {
+          "gear": "4t4d",
+          "vx_mps": 0.023,
+          "vy_mps": 0.0,
+          "wz_dps": 0.0
+        },
+        "steering": {
+          "gear": "4t4d",
+          "wheel_speed_mps": 0.03,
+          "wheel_angle_deg": 0.0
+        },
+        "battery": {
+          "soc_pct": 84,
+          "voltage_v": 28.38,
+          "current_a": -1.5,
+          "capacity_ah": 16.8,
+          "charging": false,
+          "max_temp_c": 30.0,
+          "min_temp_c": 30.0
+        },
+        "io": {
+          "estop": false,
+          "remote_control": true,
+          "charge_dock": false,
+          "manual_charger": false,
+          "light_mode": "auto",
+          "unlock_ok": false
+        },
+        "error": {
+          "level": "none",
+          "type": "none",
+          "component": "default",
+          "code": "0x000000"
+        },
+        "ultrasonic_mm": {}
+      }
+    },
+    {
+      "index": 6,
+      "t": 186.053,
+      "pose": {
+        "x": -0.055987868135586934,
+        "y": 0.19562034185180652,
+        "z": -1.0803013842427878,
+        "yaw_deg": -35.81360426497452
+      },
+      "snapshot": {
+        "time": "11:49:22",
+        "motion": {
+          "gear": "4t4d",
+          "vx_mps": -0.006,
+          "vy_mps": 0.0,
+          "wz_dps": 0.0
+        },
+        "steering": {
+          "gear": "4t4d",
+          "wheel_speed_mps": -0.006,
+          "wheel_angle_deg": 0.0
+        },
+        "battery": {
+          "soc_pct": 84,
+          "voltage_v": 28.38,
+          "current_a": -1.5,
+          "capacity_ah": 16.8,
+          "charging": false,
+          "max_temp_c": 30.0,
+          "min_temp_c": 30.0
+        },
+        "io": {
+          "estop": false,
+          "remote_control": true,
+          "charge_dock": false,
+          "manual_charger": false,
+          "light_mode": "auto",
+          "unlock_ok": false
+        },
+        "error": {
+          "level": "none",
+          "type": "none",
+          "component": "default",
+          "code": "0x000000"
+        },
+        "ultrasonic_mm": {}
+      }
+    },
+    {
+      "index": 7,
+      "t": 186.264,
+      "pose": {
+        "x": -0.05477799048228837,
+        "y": 0.19478638152025876,
+        "z": -1.0802966789409303,
+        "yaw_deg": -35.815221893866074
+      },
+      "snapshot": {
+        "time": "11:49:22",
+        "motion": {
+          "gear": "4t4d",
+          "vx_mps": 0.0,
+          "vy_mps": 0.0,
+          "wz_dps": 0.0
+        },
+        "steering": {
+          "gear": "4t4d",
+          "wheel_speed_mps": 0.0,
+          "wheel_angle_deg": 0.0
+        },
+        "battery": {
+          "soc_pct": 84,
+          "voltage_v": 28.38,
+          "current_a": -1.5,
+          "capacity_ah": 16.8,
+          "charging": false,
+          "max_temp_c": 30.0,
+          "min_temp_c": 30.0
+        },
+        "io": {
+          "estop": false,
+          "remote_control": true,
+          "charge_dock": false,
+          "manual_charger": false,
+          "light_mode": "auto",
+          "unlock_ok": false
+        },
+        "error": {
+          "level": "none",
+          "type": "none",
+          "component": "default",
+          "code": "0x000000"
+        },
+        "ultrasonic_mm": {}
+      }
+    },
+    {
+      "index": 8,
+      "t": 186.476,
+      "pose": {
+        "x": -0.05310663218483001,
+        "y": 0.19360333424341225,
+        "z": -1.080255623838163,
+        "yaw_deg": -35.81660587660079
+      },
+      "snapshot": {
+        "time": "11:49:22",
+        "motion": {
+          "gear": "4t4d",
+          "vx_mps": 0.0,
+          "vy_mps": 0.0,
+          "wz_dps": 0.0
+        },
+        "steering": {
+          "gear": "4t4d",
+          "wheel_speed_mps": 0.0,
+          "wheel_angle_deg": 0.0
+        },
+        "battery": {
+          "soc_pct": 84,
+          "voltage_v": 28.38,
+          "current_a": -1.5,
+          "capacity_ah": 16.8,
+          "charging": false,
+          "max_temp_c": 30.0,
+          "min_temp_c": 30.0
+        },
+        "io": {
+          "estop": false,
+          "remote_control": true,
+          "charge_dock": false,
+          "manual_charger": false,
+          "light_mode": "auto",
+          "unlock_ok": false
+        },
+        "error": {
+          "level": "none",
+          "type": "none",
+          "component": "default",
+          "code": "0x000000"
+        },
+        "ultrasonic_mm": {}
+      }
+    },
+    {
+      "index": 9,
+      "t": 186.69,
+      "pose": {
+        "x": -0.05251073736649709,
+        "y": 0.19329611603528718,
+        "z": -1.0804134582547407,
+        "yaw_deg": -35.8187615212327
+      },
+      "snapshot": {
+        "time": "11:49:22",
+        "motion": {
+          "gear": "4t4d",
+          "vx_mps": 0.0,
+          "vy_mps": 0.0,
+          "wz_dps": 0.0
+        },
+        "steering": {
+          "gear": "4t4d",
+          "wheel_speed_mps": 0.0,
+          "wheel_angle_deg": 0.0
+        },
+        "battery": {
+          "soc_pct": 84,
+          "voltage_v": 28.38,
+          "current_a": -1.5,
+          "capacity_ah": 16.8,
+          "charging": false,
+          "max_temp_c": 30.0,
+          "min_temp_c": 30.0
+        },
+        "io": {
+          "estop": false,
+          "remote_control": true,
+          "charge_dock": false,
+          "manual_charger": false,
+          "light_mode": "auto",
+          "unlock_ok": false
+        },
+        "error": {
+          "level": "none",
+          "type": "none",
+          "component": "default",
+          "code": "0x000000"
+        },
+        "ultrasonic_mm": {}
+      }
+    },
+    {
+      "index": 10,
+      "t": 186.898,
+      "pose": {
+        "x": -0.05182154409979969,
+        "y": 0.19277259785336603,
+        "z": -1.0802185321593811,
+        "yaw_deg": -35.81006478286416
+      },
+      "snapshot": {
+        "time": "11:49:23",
+        "motion": {
+          "gear": "4t4d",
+          "vx_mps": 0.0,
+          "vy_mps": 0.0,
+          "wz_dps": 0.0
+        },
+        "steering": {
+          "gear": "4t4d",
+          "wheel_speed_mps": 0.0,
+          "wheel_angle_deg": 0.0
+        },
+        "battery": {
+          "soc_pct": 84,
+          "voltage_v": 28.38,
+          "current_a": -1.5,
+          "capacity_ah": 16.8,
+          "charging": false,
+          "max_temp_c": 30.0,
+          "min_temp_c": 30.0
+        },
+        "io": {
+          "estop": false,
+          "remote_control": true,
+          "charge_dock": false,
+          "manual_charger": false,
+          "light_mode": "auto",
+          "unlock_ok": false
+        },
+        "error": {
+          "level": "none",
+          "type": "none",
+          "component": "default",
+          "code": "0x000000"
+        },
+        "ultrasonic_mm": {}
+      }
+    },
+    {
+      "index": 11,
+      "t": 187.106,
+      "pose": {
+        "x": -0.051462010920337385,
+        "y": 0.1926317045902515,
+        "z": -1.0802437725934244,
+        "yaw_deg": -35.79472324934371
+      },
+      "snapshot": {
+        "time": "11:49:23",
+        "motion": {
+          "gear": "4t4d",
+          "vx_mps": 0.0,
+          "vy_mps": 0.0,
+          "wz_dps": 0.0
+        },
+        "steering": {
+          "gear": "4t4d",
+          "wheel_speed_mps": 0.0,
+          "wheel_angle_deg": 0.0
+        },
+        "battery": {
+          "soc_pct": 84,
+          "voltage_v": 28.39,
+          "current_a": -1.4,
+          "capacity_ah": 16.8,
+          "charging": false,
+          "max_temp_c": 30.0,
+          "min_temp_c": 30.0
+        },
+        "io": {
+          "estop": false,
+          "remote_control": true,
+          "charge_dock": false,
+          "manual_charger": false,
+          "light_mode": "auto",
+          "unlock_ok": false
+        },
+        "error": {
+          "level": "none",
+          "type": "none",
+          "component": "default",
+          "code": "0x000000"
+        },
+        "ultrasonic_mm": {}
+      }
+    },
+    {
+      "index": 12,
+      "t": 187.315,
+      "pose": {
+        "x": -0.05164049596921074,
+        "y": 0.1927194065440741,
+        "z": -1.080255528384583,
+        "yaw_deg": -35.79269451479498
+      },
+      "snapshot": {
+        "time": "11:49:23",
+        "motion": {
+          "gear": "4t4d",
+          "vx_mps": 0.022,
+          "vy_mps": 0.0,
+          "wz_dps": 0.0
+        },
+        "steering": {
+          "gear": "4t4d",
+          "wheel_speed_mps": 0.022,
+          "wheel_angle_deg": 0.0
+        },
+        "battery": {
+          "soc_pct": 84,
+          "voltage_v": 28.39,
+          "current_a": -1.4,
+          "capacity_ah": 16.8,
+          "charging": false,
+          "max_temp_c": 30.0,
+          "min_temp_c": 30.0
+        },
+        "io": {
+          "estop": false,
+          "remote_control": true,
+          "charge_dock": false,
+          "manual_charger": false,
+          "light_mode": "auto",
+          "unlock_ok": false
+        },
+        "error": {
+          "level": "none",
+          "type": "none",
+          "component": "default",
+          "code": "0x000000"
+        },
+        "ultrasonic_mm": {}
+      }
+    },
+    {
+      "index": 13,
+      "t": 187.536,
+      "pose": {
+        "x": -0.051287858635457484,
+        "y": 0.19262587024641298,
+        "z": -1.0805088331147792,
+        "yaw_deg": -35.789426518890764
+      },
+      "snapshot": {
+        "time": "11:49:23",
+        "motion": {
+          "gear": "4t4d",
+          "vx_mps": 0.012,
+          "vy_mps": 0.0,
+          "wz_dps": 0.0
+        },
+        "steering": {
+          "gear": "4t4d",
+          "wheel_speed_mps": 0.012,
+          "wheel_angle_deg": 0.0
+        },
+        "battery": {
+          "soc_pct": 84,
+          "voltage_v": 28.39,
+          "current_a": -1.4,
+          "capacity_ah": 16.8,
+          "charging": false,
+          "max_temp_c": 30.0,
+          "min_temp_c": 30.0
+        },
+        "io": {
+          "estop": false,
+          "remote_control": true,
+          "charge_dock": false,
+          "manual_charger": false,
+          "light_mode": "auto",
+          "unlock_ok": false
+        },
+        "error": {
+          "level": "none",
+          "type": "none",
+          "component": "default",
+          "code": "0x000000"
+        },
+        "ultrasonic_mm": {}
+      }
+    },
+    {
+      "index": 14,
+      "t": 187.758,
+      "pose": {
+        "x": -0.05128407435723717,
+        "y": 0.19276308104101905,
+        "z": -1.0807326246314632,
+        "yaw_deg": -35.7888091911041
+      },
+      "snapshot": {
+        "time": "11:49:23",
+        "motion": {
+          "gear": "4t4d",
+          "vx_mps": -0.003,
+          "vy_mps": 0.0,
+          "wz_dps": 0.0
+        },
+        "steering": {
+          "gear": "4t4d",
+          "wheel_speed_mps": 0.004,
+          "wheel_angle_deg": 0.0
+        },
+        "battery": {
+          "soc_pct": 84,
+          "voltage_v": 28.39,
+          "current_a": -1.4,
+          "capacity_ah": 16.8,
+          "charging": false,
+          "max_temp_c": 30.0,
+          "min_temp_c": 30.0
+        },
+        "io": {
+          "estop": false,
+          "remote_control": true,
+          "charge_dock": false,
+          "manual_charger": false,
+          "light_mode": "auto",
+          "unlock_ok": false
+        },
+        "error": {
+          "level": "none",
+          "type": "none",
+          "component": "default",
+          "code": "0x000000"
+        },
+        "ultrasonic_mm": {}
+      }
+    },
+    {
+      "index": 15,
+      "t": 187.968,
+      "pose": {
+        "x": -0.05133719259814715,
+        "y": 0.1927380184094264,
+        "z": -1.0804270961568119,
+        "yaw_deg": -35.791179349912625
+      },
+      "snapshot": {
+        "time": "11:49:24",
+        "motion": {
+          "gear": "4t4d",
+          "vx_mps": -0.001,
+          "vy_mps": 0.0,
+          "wz_dps": 0.0
+        },
+        "steering": {
+          "gear": "4t4d",
+          "wheel_speed_mps": -0.001,
+          "wheel_angle_deg": 0.0
+        },
+        "battery": {
+          "soc_pct": 84,
+          "voltage_v": 28.39,
+          "current_a": -1.4,
+          "capacity_ah": 16.8,
+          "charging": false,
+          "max_temp_c": 30.0,
+          "min_temp_c": 30.0
+        },
+        "io": {
+          "estop": false,
+          "remote_control": true,
+          "charge_dock": false,
+          "manual_charger": false,
+          "light_mode": "auto",
+          "unlock_ok": false
+        },
+        "error": {
+          "level": "none",
+          "type": "none",
+          "component": "default",
+          "code": "0x000000"
+        },
+        "ultrasonic_mm": {}
+      }
+    },
+    {
+      "index": 16,
+      "t": 188.181,
+      "pose": {
+        "x": -0.04983962495204908,
+        "y": 0.19113908418316405,
+        "z": -1.0797168859533803,
+        "yaw_deg": -35.80682500848421
+      },
+      "snapshot": {
+        "time": "11:49:24",
+        "motion": {
+          "gear": "4t4d",
+          "vx_mps": 0.0,
+          "vy_mps": 0.0,
+          "wz_dps": 0.0
+        },
+        "steering": {
+          "gear": "4t4d",
+          "wheel_speed_mps": 0.0,
+          "wheel_angle_deg": 0.0
+        },
+        "battery": {
+          "soc_pct": 84,
+          "voltage_v": 28.39,
+          "current_a": -1.4,
+          "capacity_ah": 16.8,
+          "charging": false,
+          "max_temp_c": 30.0,
+          "min_temp_c": 30.0
+        },
+        "io": {
+          "estop": false,
+          "remote_control": true,
+          "charge_dock": false,
+          "manual_charger": false,
+          "light_mode": "auto",
+          "unlock_ok": false
+        },
+        "error": {
+          "level": "none",
+          "type": "none",
+          "component": "default",
+          "code": "0x000000"
+        },
+        "ultrasonic_mm": {}
+      }
+    },
+    {
+      "index": 17,
+      "t": 188.395,
+      "pose": {
+        "x": -0.049764860097038566,
+        "y": 0.19112255505775197,
+        "z": -1.0797140047364628,
+        "yaw_deg": -35.80580851681462
+      },
+      "snapshot": {
+        "time": "11:49:24",
+        "motion": {
+          "gear": "4t4d",
+          "vx_mps": 0.0,
+          "vy_mps": 0.0,
+          "wz_dps": 0.0
+        },
+        "steering": {
+          "gear": "4t4d",
+          "wheel_speed_mps": 0.0,
+          "wheel_angle_deg": 0.0
+        },
+        "battery": {
+          "soc_pct": 84,
+          "voltage_v": 28.39,
+          "current_a": -1.4,
+          "capacity_ah": 16.8,
+          "charging": false,
+          "max_temp_c": 30.0,
+          "min_temp_c": 30.0
+        },
+        "io": {
+          "estop": false,
+          "remote_control": true,
+          "charge_dock": false,
+          "manual_charger": false,
+          "light_mode": "auto",
+          "unlock_ok": false
+        },
+        "error": {
+          "level": "none",
+          "type": "none",
+          "component": "default",
+          "code": "0x000000"
+        },
+        "ultrasonic_mm": {}
+      }
+    },
+    {
+      "index": 18,
+      "t": 188.604,
+      "pose": {
+        "x": -0.04971964675480444,
+        "y": 0.19112182412667025,
+        "z": -1.0797524245429901,
+        "yaw_deg": -35.806002340056594
+      },
+      "snapshot": {
+        "time": "11:49:24",
+        "motion": {
+          "gear": "4t4d",
+          "vx_mps": 0.0,
+          "vy_mps": 0.0,
+          "wz_dps": 0.0
+        },
+        "steering": {
+          "gear": "4t4d",
+          "wheel_speed_mps": 0.0,
+          "wheel_angle_deg": 0.0
+        },
+        "battery": {
+          "soc_pct": 84,
+          "voltage_v": 28.39,
+          "current_a": -1.5,
+          "capacity_ah": 16.8,
+          "charging": false,
+          "max_temp_c": 30.0,
+          "min_temp_c": 30.0
+        },
+        "io": {
+          "estop": false,
+          "remote_control": true,
+          "charge_dock": false,
+          "manual_charger": false,
+          "light_mode": "auto",
+          "unlock_ok": false
+        },
+        "error": {
+          "level": "none",
+          "type": "none",
+          "component": "default",
+          "code": "0x000000"
+        },
+        "ultrasonic_mm": {}
+      }
+    },
+    {
+      "index": 19,
+      "t": 188.816,
+      "pose": {
+        "x": -0.049772784711303274,
+        "y": 0.19115604265319872,
+        "z": -1.0798039630866392,
+        "yaw_deg": -35.80673146856519
+      },
+      "snapshot": {
+        "time": "11:49:25",
+        "motion": {
+          "gear": "4t4d",
+          "vx_mps": 0.0,
+          "vy_mps": 0.0,
+          "wz_dps": 0.0
+        },
+        "steering": {
+          "gear": "4t4d",
+          "wheel_speed_mps": 0.0,
+          "wheel_angle_deg": 0.0
+        },
+        "battery": {
+          "soc_pct": 84,
+          "voltage_v": 28.39,
+          "current_a": -1.5,
+          "capacity_ah": 16.8,
+          "charging": false,
+          "max_temp_c": 30.0,
+          "min_temp_c": 30.0
+        },
+        "io": {
+          "estop": false,
+          "remote_control": true,
+          "charge_dock": false,
+          "manual_charger": false,
+          "light_mode": "auto",
+          "unlock_ok": false
+        },
+        "error": {
+          "level": "none",
+          "type": "none",
+          "component": "default",
+          "code": "0x000000"
+        },
+        "ultrasonic_mm": {}
+      }
+    },
+    {
+      "index": 20,
+      "t": 189.026,
+      "pose": {
+        "x": -0.049808883902933,
+        "y": 0.19115880465799878,
+        "z": -1.07985598442863,
+        "yaw_deg": -35.80813619064413
+      },
+      "snapshot": {
+        "time": "11:49:25",
+        "motion": {
+          "gear": "disable",
+          "vx_mps": 0.0,
+          "vy_mps": 0.0,
+          "wz_dps": 0.0
+        },
+        "steering": {
+          "gear": "disable",
+          "wheel_speed_mps": 0.0,
+          "wheel_angle_deg": 0.0
+        },
+        "battery": {
+          "soc_pct": 84,
+          "voltage_v": 28.39,
+          "current_a": -1.5,
+          "capacity_ah": 16.8,
+          "charging": false,
+          "max_temp_c": 30.0,
+          "min_temp_c": 30.0
+        },
+        "io": {
+          "estop": false,
+          "remote_control": true,
+          "charge_dock": false,
+          "manual_charger": false,
+          "light_mode": "auto",
+          "unlock_ok": false
+        },
+        "error": {
+          "level": "none",
+          "type": "none",
+          "component": "default",
+          "code": "0x000000"
+        },
+        "ultrasonic_mm": {}
+      }
+    },
+    {
+      "index": 21,
+      "t": 189.239,
+      "pose": {
+        "x": -0.04968313818010955,
+        "y": 0.19100724890469434,
+        "z": -1.080078077117673,
+        "yaw_deg": -35.805725833132215
+      },
+      "snapshot": {
+        "time": "11:49:25",
+        "motion": {
+          "gear": "disable",
+          "vx_mps": 0.0,
+          "vy_mps": 0.0,
+          "wz_dps": 0.0
+        },
+        "steering": {
+          "gear": "disable",
+          "wheel_speed_mps": 0.0,
+          "wheel_angle_deg": 0.0
+        },
+        "battery": {
+          "soc_pct": 84,
+          "voltage_v": 28.39,
+          "current_a": -1.5,
+          "capacity_ah": 16.8,
+          "charging": false,
+          "max_temp_c": 30.0,
+          "min_temp_c": 30.0
+        },
+        "io": {
+          "estop": false,
+          "remote_control": true,
+          "charge_dock": false,
+          "manual_charger": false,
+          "light_mode": "auto",
+          "unlock_ok": false
+        },
+        "error": {
+          "level": "none",
+          "type": "none",
+          "component": "default",
+          "code": "0x000000"
+        },
+        "ultrasonic_mm": {}
+      }
+    },
+    {
+      "index": 22,
+      "t": 189.451,
+      "pose": {
+        "x": -0.049819580659090874,
+        "y": 0.19115411644552072,
+        "z": -1.0799808454836233,
+        "yaw_deg": -35.80386925847545
+      },
+      "snapshot": {
+        "time": "11:49:25",
+        "motion": {
+          "gear": "disable",
+          "vx_mps": 0.0,
+          "vy_mps": 0.0,
+          "wz_dps": 0.0
+        },
+        "steering": {
+          "gear": "disable",
+          "wheel_speed_mps": 0.0,
+          "wheel_angle_deg": 0.0
+        },
+        "battery": {
+          "soc_pct": 84,
+          "voltage_v": 28.39,
+          "current_a": -1.5,
+          "capacity_ah": 16.8,
+          "charging": false,
+          "max_temp_c": 30.0,
+          "min_temp_c": 30.0
+        },
+        "io": {
+          "estop": false,
+          "remote_control": true,
+          "charge_dock": false,
+          "manual_charger": false,
+          "light_mode": "auto",
+          "unlock_ok": false
+        },
+        "error": {
+          "level": "none",
+          "type": "none",
+          "component": "default",
+          "code": "0x000000"
+        },
+        "ultrasonic_mm": {}
+      }
+    },
+    {
+      "index": 23,
+      "t": 189.655,
+      "pose": {
+        "x": -0.04961966844654683,
+        "y": 0.19098674674068472,
+        "z": -1.0798541525612164,
+        "yaw_deg": -35.804264824210584
+      },
+      "snapshot": {
+        "time": "11:49:25",
+        "motion": {
+          "gear": "disable",
+          "vx_mps": 0.0,
+          "vy_mps": 0.0,
+          "wz_dps": 0.0
+        },
+        "steering": {
+          "gear": "disable",
+          "wheel_speed_mps": 0.0,
+          "wheel_angle_deg": 0.0
+        },
+        "battery": {
+          "soc_pct": 84,
+          "voltage_v": 28.39,
+          "current_a": -1.4,
+          "capacity_ah": 16.8,
+          "charging": false,
+          "max_temp_c": 30.0,
+          "min_temp_c": 30.0
+        },
+        "io": {
+          "estop": false,
+          "remote_control": true,
+          "charge_dock": false,
+          "manual_charger": false,
+          "light_mode": "auto",
+          "unlock_ok": false
+        },
+        "error": {
+          "level": "none",
+          "type": "none",
+          "component": "default",
+          "code": "0x000000"
+        },
+        "ultrasonic_mm": {}
+      }
+    },
+    {
+      "index": 24,
+      "t": 189.862,
+      "pose": {
+        "x": -0.04967798164191332,
+        "y": 0.19090790561934892,
+        "z": -1.0799554881007027,
+        "yaw_deg": -35.80530204670895
+      },
+      "snapshot": {
+        "time": "11:49:26",
+        "motion": {
+          "gear": "disable",
+          "vx_mps": 0.0,
+          "vy_mps": 0.0,
+          "wz_dps": 0.0
+        },
+        "steering": {
+          "gear": "disable",
+          "wheel_speed_mps": 0.0,
+          "wheel_angle_deg": 0.0
+        },
+        "battery": {
+          "soc_pct": 84,
+          "voltage_v": 28.39,
+          "current_a": -1.4,
+          "capacity_ah": 16.8,
+          "charging": false,
+          "max_temp_c": 30.0,
+          "min_temp_c": 30.0
+        },
+        "io": {
+          "estop": false,
+          "remote_control": true,
+          "charge_dock": false,
+          "manual_charger": false,
+          "light_mode": "auto",
+          "unlock_ok": false
+        },
+        "error": {
+          "level": "none",
+          "type": "none",
+          "component": "default",
+          "code": "0x000000"
+        },
+        "ultrasonic_mm": {}
+      }
+    },
+    {
+      "index": 25,
+      "t": 190.074,
+      "pose": {
+        "x": -0.049757157643500825,
+        "y": 0.19095255299312017,
+        "z": -1.0799325284546866,
+        "yaw_deg": -35.80580544224784
+      },
+      "snapshot": {
+        "time": "11:49:26",
+        "motion": {
+          "gear": "disable",
+          "vx_mps": 0.0,
+          "vy_mps": 0.0,
+          "wz_dps": 0.0
+        },
+        "steering": {
+          "gear": "disable",
+          "wheel_speed_mps": 0.0,
+          "wheel_angle_deg": 0.0
+        },
+        "battery": {
+          "soc_pct": 84,
+          "voltage_v": 28.39,
+          "current_a": -1.4,
+          "capacity_ah": 16.8,
+          "charging": false,
+          "max_temp_c": 30.0,
+          "min_temp_c": 30.0
+        },
+        "io": {
+          "estop": false,
+          "remote_control": true,
+          "charge_dock": false,
+          "manual_charger": false,
+          "light_mode": "auto",
+          "unlock_ok": false
+        },
+        "error": {
+          "level": "none",
+          "type": "none",
+          "component": "default",
+          "code": "0x000000"
+        },
+        "ultrasonic_mm": {}
+      }
+    },
+    {
+      "index": 26,
+      "t": 190.283,
+      "pose": {
+        "x": -0.04984111297332133,
+        "y": 0.19114719444278622,
+        "z": -1.079987839361144,
+        "yaw_deg": -35.802798079952446
+      },
+      "snapshot": {
+        "time": "11:49:26",
+        "motion": {
+          "gear": "disable",
+          "vx_mps": 0.0,
+          "vy_mps": 0.0,
+          "wz_dps": 0.0
+        },
+        "steering": {
+          "gear": "disable",
+          "wheel_speed_mps": 0.0,
+          "wheel_angle_deg": 0.0
+        },
+        "battery": {
+          "soc_pct": 84,
+          "voltage_v": 28.39,
+          "current_a": -1.4,
+          "capacity_ah": 16.8,
+          "charging": false,
+          "max_temp_c": 30.0,
+          "min_temp_c": 30.0
+        },
+        "io": {
+          "estop": false,
+          "remote_control": true,
+          "charge_dock": false,
+          "manual_charger": false,
+          "light_mode": "auto",
+          "unlock_ok": false
+        },
+        "error": {
+          "level": "none",
+          "type": "none",
+          "component": "default",
+          "code": "0x000000"
+        },
+        "ultrasonic_mm": {}
+      }
+    },
+    {
+      "index": 27,
+      "t": 190.495,
+      "pose": {
+        "x": -0.04971956297606489,
+        "y": 0.19103860065461317,
+        "z": -1.0799557255706391,
+        "yaw_deg": -35.80190559829126
+      },
+      "snapshot": {
+        "time": "11:49:26",
+        "motion": {
+          "gear": "disable",
+          "vx_mps": 0.0,
+          "vy_mps": 0.0,
+          "wz_dps": 0.0
+        },
+        "steering": {
+          "gear": "disable",
+          "wheel_speed_mps": 0.0,
+          "wheel_angle_deg": 0.0
+        },
+        "battery": {
+          "soc_pct": 84,
+          "voltage_v": 28.39,
+          "current_a": -1.4,
+          "capacity_ah": 16.8,
+          "charging": false,
+          "max_temp_c": 30.0,
+          "min_temp_c": 30.0
+        },
+        "io": {
+          "estop": false,
+          "remote_control": true,
+          "charge_dock": false,
+          "manual_charger": false,
+          "light_mode": "auto",
+          "unlock_ok": false
+        },
+        "error": {
+          "level": "none",
+          "type": "none",
+          "component": "default",
+          "code": "0x000000"
+        },
+        "ultrasonic_mm": {}
+      }
+    },
+    {
+      "index": 28,
+      "t": 190.717,
+      "pose": {
+        "x": -0.04970227101483291,
+        "y": 0.19086847125075554,
+        "z": -1.0800392985129657,
+        "yaw_deg": -35.79988772231767
+      },
+      "snapshot": {
+        "time": "11:49:26",
+        "motion": {
+          "gear": "disable",
+          "vx_mps": 0.0,
+          "vy_mps": 0.0,
+          "wz_dps": 0.0
+        },
+        "steering": {
+          "gear": "disable",
+          "wheel_speed_mps": 0.0,
+          "wheel_angle_deg": 0.0
+        },
+        "battery": {
+          "soc_pct": 84,
+          "voltage_v": 28.39,
+          "current_a": -1.4,
+          "capacity_ah": 16.8,
+          "charging": false,
+          "max_temp_c": 30.0,
+          "min_temp_c": 30.0
+        },
+        "io": {
+          "estop": false,
+          "remote_control": true,
+          "charge_dock": false,
+          "manual_charger": false,
+          "light_mode": "auto",
+          "unlock_ok": false
+        },
+        "error": {
+          "level": "none",
+          "type": "none",
+          "component": "default",
+          "code": "0x000000"
+        },
+        "ultrasonic_mm": {}
+      }
+    },
+    {
+      "index": 29,
+      "t": 190.932,
+      "pose": {
+        "x": -0.04978289035365317,
+        "y": 0.1910449152564421,
+        "z": -1.079990739308665,
+        "yaw_deg": -35.80168360290068
+      },
+      "snapshot": {
+        "time": "11:49:27",
+        "motion": {
+          "gear": "disable",
+          "vx_mps": 0.0,
+          "vy_mps": 0.0,
+          "wz_dps": 0.0
+        },
+        "steering": {
+          "gear": "disable",
+          "wheel_speed_mps": 0.0,
+          "wheel_angle_deg": 0.0
+        },
+        "battery": {
+          "soc_pct": 84,
+          "voltage_v": 28.39,
+          "current_a": -1.4,
+          "capacity_ah": 16.8,
+          "charging": false,
+          "max_temp_c": 30.0,
+          "min_temp_c": 30.0
+        },
+        "io": {
+          "estop": false,
+          "remote_control": true,
+          "charge_dock": false,
+          "manual_charger": false,
+          "light_mode": "auto",
+          "unlock_ok": false
+        },
+        "error": {
+          "level": "none",
+          "type": "none",
+          "component": "default",
+          "code": "0x000000"
+        },
+        "ultrasonic_mm": {}
+      }
+    },
+    {
+      "index": 30,
+      "t": 191.142,
+      "pose": {
+        "x": -0.049919115357296956,
+        "y": 0.19120749064979192,
+        "z": -1.0797841323841695,
+        "yaw_deg": -35.801794367673295
+      },
+      "snapshot": {
+        "time": "11:49:27",
+        "motion": {
+          "gear": "disable",
+          "vx_mps": 0.0,
+          "vy_mps": 0.0,
+          "wz_dps": 0.0
+        },
+        "steering": {
+          "gear": "disable",
+          "wheel_speed_mps": 0.0,
+          "wheel_angle_deg": 0.0
+        },
+        "battery": {
+          "soc_pct": 84,
+          "voltage_v": 28.39,
+          "current_a": -1.4,
+          "capacity_ah": 16.8,
+          "charging": false,
+          "max_temp_c": 30.0,
+          "min_temp_c": 30.0
+        },
+        "io": {
+          "estop": false,
+          "remote_control": true,
+          "charge_dock": false,
+          "manual_charger": false,
+          "light_mode": "auto",
+          "unlock_ok": false
+        },
+        "error": {
+          "level": "none",
+          "type": "none",
+          "component": "default",
+          "code": "0x000000"
+        },
+        "ultrasonic_mm": {}
+      }
+    },
+    {
+      "index": 31,
+      "t": 191.359,
+      "pose": {
+        "x": -0.04989337834912322,
+        "y": 0.19086247969555373,
+        "z": -1.0799135576048908,
+        "yaw_deg": -35.79659795820287
+      },
+      "snapshot": {
+        "time": "11:49:27",
+        "motion": {
+          "gear": "disable",
+          "vx_mps": 0.0,
+          "vy_mps": 0.0,
+          "wz_dps": 0.0
+        },
+        "steering": {
+          "gear": "disable",
+          "wheel_speed_mps": 0.0,
+          "wheel_angle_deg": 0.0
+        },
+        "battery": {
+          "soc_pct": 84,
+          "voltage_v": 28.39,
+          "current_a": -1.4,
+          "capacity_ah": 16.8,
+          "charging": false,
+          "max_temp_c": 30.0,
+          "min_temp_c": 30.0
+        },
+        "io": {
+          "estop": false,
+          "remote_control": true,
+          "charge_dock": false,
+          "manual_charger": false,
+          "light_mode": "auto",
+          "unlock_ok": false
+        },
+        "error": {
+          "level": "none",
+          "type": "none",
+          "component": "default",
+          "code": "0x000000"
+        },
+        "ultrasonic_mm": {}
+      }
+    },
+    {
+      "index": 32,
+      "t": 191.57,
+      "pose": {
+        "x": -0.0497961555644294,
+        "y": 0.19083294486098507,
+        "z": -1.0798635351324788,
+        "yaw_deg": -35.797700936406734
+      },
+      "snapshot": {
+        "time": "11:49:27",
+        "motion": {
+          "gear": "disable",
+          "vx_mps": 0.0,
+          "vy_mps": 0.0,
+          "wz_dps": 0.0
+        },
+        "steering": {
+          "gear": "disable",
+          "wheel_speed_mps": 0.0,
+          "wheel_angle_deg": 0.0
+        },
+        "battery": {
+          "soc_pct": 84,
+          "voltage_v": 28.39,
+          "current_a": -1.4,
+          "capacity_ah": 16.8,
+          "charging": false,
+          "max_temp_c": 30.0,
+          "min_temp_c": 30.0
+        },
+        "io": {
+          "estop": false,
+          "remote_control": true,
+          "charge_dock": false,
+          "manual_charger": false,
+          "light_mode": "auto",
+          "unlock_ok": false
+        },
+        "error": {
+          "level": "none",
+          "type": "none",
+          "component": "default",
+          "code": "0x000000"
+        },
+        "ultrasonic_mm": {}
+      }
+    },
+    {
+      "index": 33,
+      "t": 191.787,
+      "pose": {
+        "x": -0.049752116849522396,
+        "y": 0.19088224624340502,
+        "z": -1.0798987896725272,
+        "yaw_deg": -35.79651966879619
+      },
+      "snapshot": {
+        "time": "11:49:27",
+        "motion": {
+          "gear": "disable",
+          "vx_mps": 0.0,
+          "vy_mps": 0.0,
+          "wz_dps": 0.0
+        },
+        "steering": {
+          "gear": "disable",
+          "wheel_speed_mps": 0.0,
+          "wheel_angle_deg": 0.0
+        },
+        "battery": {
+          "soc_pct": 84,
+          "voltage_v": 28.39,
+          "current_a": -1.4,
+          "capacity_ah": 16.8,
+          "charging": false,
+          "max_temp_c": 30.0,
+          "min_temp_c": 30.0
+        },
+        "io": {
+          "estop": false,
+          "remote_control": true,
+          "charge_dock": false,
+          "manual_charger": false,
+          "light_mode": "auto",
+          "unlock_ok": false
+        },
+        "error": {
+          "level": "none",
+          "type": "none",
+          "component": "default",
+          "code": "0x000000"
+        },
+        "ultrasonic_mm": {}
+      }
+    },
+    {
+      "index": 34,
+      "t": 191.991,
+      "pose": {
+        "x": -0.049813599002318715,
+        "y": 0.19105669839597064,
+        "z": -1.0798211605598533,
+        "yaw_deg": -35.79917300435291
+      },
+      "snapshot": {
+        "time": "11:49:28",
+        "motion": {
+          "gear": "disable",
+          "vx_mps": 0.0,
+          "vy_mps": 0.0,
+          "wz_dps": 0.0
+        },
+        "steering": {
+          "gear": "disable",
+          "wheel_speed_mps": 0.0,
+          "wheel_angle_deg": 0.0
+        },
+        "battery": {
+          "soc_pct": 84,
+          "voltage_v": 28.39,
+          "current_a": -1.5,
+          "capacity_ah": 16.8,
+          "charging": false,
+          "max_temp_c": 30.0,
+          "min_temp_c": 30.0
+        },
+        "io": {
+          "estop": false,
+          "remote_control": true,
+          "charge_dock": false,
+          "manual_charger": false,
+          "light_mode": "auto",
+          "unlock_ok": false
+        },
+        "error": {
+          "level": "none",
+          "type": "none",
+          "component": "default",
+          "code": "0x000000"
+        },
+        "ultrasonic_mm": {}
+      }
+    },
+    {
+      "index": 35,
+      "t": 192.196,
+      "pose": {
+        "x": -0.0497966782254011,
+        "y": 0.1910890055527631,
+        "z": -1.0798241730459321,
+        "yaw_deg": -35.80072397171282
+      },
+      "snapshot": {
+        "time": "11:49:28",
+        "motion": {
+          "gear": "disable",
+          "vx_mps": 0.0,
+          "vy_mps": 0.0,
+          "wz_dps": 0.0
+        },
+        "steering": {
+          "gear": "disable",
+          "wheel_speed_mps": 0.0,
+          "wheel_angle_deg": 0.0
+        },
+        "battery": {
+          "soc_pct": 84,
+          "voltage_v": 28.39,
+          "current_a": -1.5,
+          "capacity_ah": 16.8,
+          "charging": false,
+          "max_temp_c": 30.0,
+          "min_temp_c": 30.0
+        },
+        "io": {
+          "estop": false,
+          "remote_control": true,
+          "charge_dock": false,
+          "manual_charger": false,
+          "light_mode": "auto",
+          "unlock_ok": false
+        },
+        "error": {
+          "level": "none",
+          "type": "none",
+          "component": "default",
+          "code": "0x000000"
+        },
+        "ultrasonic_mm": {}
+      }
+    },
+    {
+      "index": 36,
+      "t": 192.405,
+      "pose": {
+        "x": -0.04977981809821952,
+        "y": 0.19103873697800908,
+        "z": -1.0798335779307553,
+        "yaw_deg": -35.80090353044132
+      },
+      "snapshot": {
+        "time": "11:49:28",
+        "motion": {
+          "gear": "disable",
+          "vx_mps": 0.0,
+          "vy_mps": 0.0,
+          "wz_dps": 0.0
+        },
+        "steering": {
+          "gear": "disable",
+          "wheel_speed_mps": 0.0,
+          "wheel_angle_deg": 0.0
+        },
+        "battery": {
+          "soc_pct": 84,
+          "voltage_v": 28.39,
+          "current_a": -1.5,
+          "capacity_ah": 16.8,
+          "charging": false,
+          "max_temp_c": 30.0,
+          "min_temp_c": 30.0
+        },
+        "io": {
+          "estop": false,
+          "remote_control": true,
+          "charge_dock": false,
+          "manual_charger": false,
+          "light_mode": "auto",
+          "unlock_ok": false
+        },
+        "error": {
+          "level": "none",
+          "type": "none",
+          "component": "default",
+          "code": "0x000000"
+        },
+        "ultrasonic_mm": {}
+      }
+    },
+    {
+      "index": 37,
+      "t": 192.615,
+      "pose": {
+        "x": -0.049707580147264084,
+        "y": 0.19092194068493126,
+        "z": -1.0798665702320593,
+        "yaw_deg": -35.798889413747574
+      },
+      "snapshot": {
+        "time": "11:49:28",
+        "motion": {
+          "gear": "disable",
+          "vx_mps": 0.0,
+          "vy_mps": 0.0,
+          "wz_dps": 0.0
+        },
+        "steering": {
+          "gear": "disable",
+          "wheel_speed_mps": 0.0,
+          "wheel_angle_deg": 0.0
+        },
+        "battery": {
+          "soc_pct": 84,
+          "voltage_v": 28.39,
+          "current_a": -1.5,
+          "capacity_ah": 16.8,
+          "charging": false,
+          "max_temp_c": 30.0,
+          "min_temp_c": 30.0
+        },
+        "io": {
+          "estop": false,
+          "remote_control": true,
+          "charge_dock": false,
+          "manual_charger": false,
+          "light_mode": "auto",
+          "unlock_ok": false
+        },
+        "error": {
+          "level": "none",
+          "type": "none",
+          "component": "default",
+          "code": "0x000000"
+        },
+        "ultrasonic_mm": {}
+      }
+    },
+    {
+      "index": 38,
+      "t": 192.824,
+      "pose": {
+        "x": -0.04966235938067522,
+        "y": 0.19091788547841063,
+        "z": -1.0799386296659885,
+        "yaw_deg": -35.79545428883738
+      },
+      "snapshot": {
+        "time": "11:49:29",
+        "motion": {
+          "gear": "disable",
+          "vx_mps": 0.0,
+          "vy_mps": 0.0,
+          "wz_dps": 0.0
+        },
+        "steering": {
+          "gear": "disable",
+          "wheel_speed_mps": 0.0,
+          "wheel_angle_deg": 0.0
+        },
+        "battery": {
+          "soc_pct": 84,
+          "voltage_v": 28.39,
+          "current_a": -1.4,
+          "capacity_ah": 16.8,
+          "charging": false,
+          "max_temp_c": 30.0,
+          "min_temp_c": 30.0
+        },
+        "io": {
+          "estop": false,
+          "remote_control": true,
+          "charge_dock": false,
+          "manual_charger": false,
+          "light_mode": "auto",
+          "unlock_ok": false
+        },
+        "error": {
+          "level": "none",
+          "type": "none",
+          "component": "default",
+          "code": "0x000000"
+        },
+        "ultrasonic_mm": {}
+      }
+    },
+    {
+      "index": 39,
+      "t": 193.033,
+      "pose": {
+        "x": -0.04970812470478275,
+        "y": 0.19096848133846575,
+        "z": -1.0797815817413932,
+        "yaw_deg": -35.795550807978515
+      },
+      "snapshot": {
+        "time": "11:49:29",
+        "motion": {
+          "gear": "disable",
+          "vx_mps": 0.0,
+          "vy_mps": 0.0,
+          "wz_dps": 0.0
+        },
+        "steering": {
+          "gear": "disable",
+          "wheel_speed_mps": 0.0,
+          "wheel_angle_deg": 0.0
+        },
+        "battery": {
+          "soc_pct": 84,
+          "voltage_v": 28.39,
+          "current_a": -1.4,
+          "capacity_ah": 16.8,
+          "charging": false,
+          "max_temp_c": 30.0,
+          "min_temp_c": 30.0
+        },
+        "io": {
+          "estop": false,
+          "remote_control": true,
+          "charge_dock": false,
+          "manual_charger": false,
+          "light_mode": "auto",
+          "unlock_ok": false
+        },
+        "error": {
+          "level": "none",
+          "type": "none",
+          "component": "default",
+          "code": "0x000000"
+        },
+        "ultrasonic_mm": {}
+      }
+    },
+    {
+      "index": 40,
+      "t": 193.249,
+      "pose": {
+        "x": -0.04975570269860053,
+        "y": 0.19099641597705097,
+        "z": -1.0797725743556188,
+        "yaw_deg": -35.795256445166444
+      },
+      "snapshot": {
+        "time": "11:49:29",
+        "motion": {
+          "gear": "disable",
+          "vx_mps": 0.0,
+          "vy_mps": 0.0,
+          "wz_dps": 0.0
+        },
+        "steering": {
+          "gear": "disable",
+          "wheel_speed_mps": 0.0,
+          "wheel_angle_deg": 0.0
+        },
+        "battery": {
+          "soc_pct": 84,
+          "voltage_v": 28.39,
+          "current_a": -1.4,
+          "capacity_ah": 16.8,
+          "charging": false,
+          "max_temp_c": 30.0,
+          "min_temp_c": 30.0
+        },
+        "io": {
+          "estop": false,
+          "remote_control": true,
+          "charge_dock": false,
+          "manual_charger": false,
+          "light_mode": "auto",
+          "unlock_ok": false
+        },
+        "error": {
+          "level": "none",
+          "type": "none",
+          "component": "default",
+          "code": "0x000000"
+        },
+        "ultrasonic_mm": {}
+      }
+    },
+    {
+      "index": 41,
+      "t": 193.458,
+      "pose": {
+        "x": -0.04974457650848575,
+        "y": 0.1910092340712773,
+        "z": -1.0798559506822312,
+        "yaw_deg": -35.79175895048261
+      },
+      "snapshot": {
+        "time": "11:49:29",
+        "motion": {
+          "gear": "disable",
+          "vx_mps": 0.0,
+          "vy_mps": 0.0,
+          "wz_dps": 0.0
+        },
+        "steering": {
+          "gear": "disable",
+          "wheel_speed_mps": 0.0,
+          "wheel_angle_deg": 0.0
+        },
+        "battery": {
+          "soc_pct": 84,
+          "voltage_v": 28.39,
+          "current_a": -1.4,
+          "capacity_ah": 16.8,
+          "charging": false,
+          "max_temp_c": 30.0,
+          "min_temp_c": 30.0
+        },
+        "io": {
+          "estop": false,
+          "remote_control": true,
+          "charge_dock": false,
+          "manual_charger": false,
+          "light_mode": "auto",
+          "unlock_ok": false
+        },
+        "error": {
+          "level": "none",
+          "type": "none",
+          "component": "default",
+          "code": "0x000000"
+        },
+        "ultrasonic_mm": {}
+      }
+    },
+    {
+      "index": 42,
+      "t": 193.673,
+      "pose": {
+        "x": -0.04992171341149084,
+        "y": 0.19104597852217658,
+        "z": -1.0797927195523502,
+        "yaw_deg": -35.79389231839507
+      },
+      "snapshot": {
+        "time": "11:49:29",
+        "motion": {
+          "gear": "disable",
+          "vx_mps": 0.0,
+          "vy_mps": 0.0,
+          "wz_dps": 0.0
+        },
+        "steering": {
+          "gear": "disable",
+          "wheel_speed_mps": 0.0,
+          "wheel_angle_deg": 0.0
+        },
+        "battery": {
+          "soc_pct": 84,
+          "voltage_v": 28.39,
+          "current_a": -1.4,
+          "capacity_ah": 16.8,
+          "charging": false,
+          "max_temp_c": 30.0,
+          "min_temp_c": 30.0
+        },
+        "io": {
+          "estop": false,
+          "remote_control": true,
+          "charge_dock": false,
+          "manual_charger": false,
+          "light_mode": "auto",
+          "unlock_ok": false
+        },
+        "error": {
+          "level": "none",
+          "type": "none",
+          "component": "default",
+          "code": "0x000000"
+        },
+        "ultrasonic_mm": {}
+      }
+    },
+    {
+      "index": 43,
+      "t": 193.882,
+      "pose": {
+        "x": -0.050070764696556955,
+        "y": 0.19089487039973152,
+        "z": -1.0797361527878078,
+        "yaw_deg": -35.79160607430437
+      },
+      "snapshot": {
+        "time": "11:49:30",
+        "motion": {
+          "gear": "disable",
+          "vx_mps": 0.0,
+          "vy_mps": 0.0,
+          "wz_dps": 0.0
+        },
+        "steering": {
+          "gear": "disable",
+          "wheel_speed_mps": 0.0,
+          "wheel_angle_deg": 0.0
+        },
+        "battery": {
+          "soc_pct": 84,
+          "voltage_v": 28.39,
+          "current_a": -1.4,
+          "capacity_ah": 16.8,
+          "charging": false,
+          "max_temp_c": 30.0,
+          "min_temp_c": 30.0
+        },
+        "io": {
+          "estop": false,
+          "remote_control": true,
+          "charge_dock": false,
+          "manual_charger": false,
+          "light_mode": "auto",
+          "unlock_ok": false
+        },
+        "error": {
+          "level": "none",
+          "type": "none",
+          "component": "default",
+          "code": "0x000000"
+        },
+        "ultrasonic_mm": {}
+      }
+    }
+  ]
+}

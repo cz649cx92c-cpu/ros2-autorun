@@ -78,7 +78,7 @@ def ros_master_is_ready(timeout_sec: float = 0.2) -> bool:
         return False
 
 
-def open_capture(source: str, width: int, height: int, fps: int, fourcc: str) -> cv2.VideoCapture:
+def open_capture(source: str, width: int, height: int, fps: float, fourcc: str) -> cv2.VideoCapture:
     source = normalize_device_path(source)
     if source.isdigit():
         capture = cv2.VideoCapture(int(source))
@@ -90,7 +90,7 @@ def open_capture(source: str, width: int, height: int, fps: int, fourcc: str) ->
         raise RuntimeError(f"failed to open UVC source: {source}")
     capture.set(cv2.CAP_PROP_FRAME_WIDTH, max(1, int(width)))
     capture.set(cv2.CAP_PROP_FRAME_HEIGHT, max(1, int(height)))
-    capture.set(cv2.CAP_PROP_FPS, max(1, int(fps)))
+    capture.set(cv2.CAP_PROP_FPS, max(1.0, float(fps)))
     if fourcc:
         capture.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*fourcc[:4]))
     return capture
@@ -113,7 +113,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--source", default="/dev/video0")
     parser.add_argument("--camera-width", type=int, default=1024)
     parser.add_argument("--camera-height", type=int, default=768)
-    parser.add_argument("--camera-fps", type=int, default=10)
+    parser.add_argument("--camera-fps", type=float, default=10.0)
     parser.add_argument("--camera-fourcc", default="MJPG")
     parser.add_argument("--image-topic", default="/autorun_final/uvc_preview/compressed")
     parser.add_argument("--preview-width", type=int, default=640)

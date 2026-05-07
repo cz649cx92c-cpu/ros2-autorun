@@ -13,7 +13,7 @@
   "line_cruise_vx": "0.12",
   "line_camera_width": "1024",
   "line_camera_height": "768",
-  "line_camera_fps": "10.000",
+  "line_camera_fps": "20.000",
   "line_max_fps": "9.0",
   "line_target_center_offset_px": "-40",
   "line_vehicle_direction_angle_deg": "0.0",
@@ -21,7 +21,7 @@
   "line_kp_offset": "7.0",
   "line_kp_heading": "0.08",
   "line_max_wz": "1.6",
-  "local_weight_in_row": "0.75",
-  "global_weight_in_row": "0.25",
+  "local_weight_in_row": "1",
+  "global_weight_in_row": "0",
   "line_require_npu": true
 }
