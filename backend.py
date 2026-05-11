@@ -38,6 +38,7 @@ SHADOW_CATKIN_SRC = SHADOW_CATKIN_WS / "src"
 SHADOW_CATKIN_SETUP = SHADOW_CATKIN_WS / "devel" / "setup.bash"
 SHADOW_HOST_SDK_BIN = SHADOW_CATKIN_WS / "devel" / "lib" / "odin_ros_driver" / "host_sdk_sample"
 LINERUN_ROOT = ROOT / "linerun"
+LINERUN_PYTHON = Path("/opt/miniconda3/envs/py310/bin/python")
 
 for path in (MISSIONS_DIR, LOG_DIR, ROS_LOG_DIR, RUNTIME_DIR, TEMP_CONFIG_DIR, VENDOR_ROOT, SHADOW_CATKIN_SRC):
     path.mkdir(parents=True, exist_ok=True)
@@ -495,8 +496,9 @@ class LineRunRosBridge:
 class LineRunProcess(core.ManagedProcess):
     def __init__(self, args: argparse.Namespace, log_path: Path) -> None:
         line_camera_fps = int(round(float(args.line_camera_fps)))
+        line_python = str(LINERUN_PYTHON if LINERUN_PYTHON.exists() else Path(sys.executable))
         cmd = [
-            sys.executable,
+            line_python,
             str(LINERUN_ROOT / "plant_row_runner.py"),
             "--model",
             args.line_model,
@@ -600,6 +602,146 @@ def _safe_float(value: Any, default: float = 0.0) -> float:
         return float(value)
     except Exception:
         return float(default)
+
+
+def _linear_blend_amount(value: float, start: float, end: float) -> float:
+    if end <= start:
+        return 1.0 if value <= end else 0.0
+    if value <= start:
+        return 1.0
+    if value >= end:
+        return 0.0
+    return (end - value) / (end - start)
+
+
+def _find_next_maneuver_index(
+    motions: list[dict[str, Any]],
+    start_index: int,
+    *,
+    limit: int = 48,
+) -> int | None:
+    end = min(len(motions), start_index + max(1, limit))
+    for idx in range(max(0, start_index), end):
+        motion = motions[idx]
+        gear = core._resolve_replay_gear(motion, None)
+        vx = _safe_float(motion.get("vx"), 0.0)
+        if vx < -0.03 or gear == "crab" or abs(_safe_float(motion.get("vy"), 0.0)) > 0.05:
+            return idx
+    return None
+
+
+def _find_next_reverse_index(
+    motions: list[dict[str, Any]],
+    start_index: int,
+    *,
+    limit: int = 48,
+) -> int | None:
+    end = min(len(motions), start_index + max(1, limit))
+    for idx in range(max(0, start_index), end):
+        if _safe_float(motions[idx].get("vx"), 0.0) < -0.03:
+            return idx
+    return None
+
+
+def _find_recent_reverse_index(
+    motions: list[dict[str, Any]],
+    start_index: int,
+    *,
+    limit: int = 24,
+) -> int | None:
+    begin = max(0, start_index - max(1, limit))
+    for idx in range(start_index - 1, begin - 1, -1):
+        if _safe_float(motions[idx].get("vx"), 0.0) < -0.03:
+            return idx
+    return None
+
+
+def _find_reverse_segment_start(
+    motions: list[dict[str, Any]],
+    index: int,
+) -> int | None:
+    if index < 0 or index >= len(motions):
+        return None
+    if _safe_float(motions[index].get("vx"), 0.0) >= -0.03:
+        return None
+    start = index
+    while start > 0 and _safe_float(motions[start - 1].get("vx"), 0.0) < -0.03:
+        start -= 1
+    return start
+
+
+def _compute_hybrid_weights(
+    *,
+    args: argparse.Namespace,
+    row_switch_mode: bool,
+    reversing_mode: bool,
+    near_finish: bool,
+    local_status: LineStatus,
+    local_cmd: TwistCommand,
+    dist_to_row_switch: float | None,
+    dist_to_reverse_start: float | None,
+    dist_since_reverse_start: float | None,
+) -> tuple[float, float, str]:
+    configured_local_weight = max(0.0, min(1.0, float(args.local_weight_in_row)))
+    configured_global_weight = max(0.0, min(1.0, float(args.global_weight_in_row)))
+    local_enabled_by_weight = configured_local_weight > 1e-6
+
+    if row_switch_mode:
+        return 1.0, 0.0, "global-row-switch"
+    if not local_enabled_by_weight:
+        return 1.0, 0.0, "global-only"
+    if local_status.obstacle_blocked:
+        if near_finish or row_switch_mode:
+            return 1.0, 0.0, "global-near-finish-blocked"
+        return 0.0, 1.0, "local-block-stop"
+    if not (local_status.fresh and local_status.state == "TRACK" and local_cmd.fresh):
+        return 1.0, 0.0, "global-fallback"
+
+    total = configured_global_weight + configured_local_weight
+    if total <= 1e-6:
+        base_global = 1.0
+        base_local = 0.0
+    else:
+        base_global = configured_global_weight / total
+        base_local = configured_local_weight / total
+
+    if reversing_mode:
+        if dist_since_reverse_start is None:
+            return base_global, base_local, "blend-reverse-local"
+        full_global_dist = max(0.05, float(getattr(args, "row_switch_full_global_dist", 1.50)))
+        blend_start_dist = max(full_global_dist, float(getattr(args, "row_switch_blend_start_dist", 3.0)))
+        if dist_since_reverse_start <= full_global_dist:
+            anticipation = 1.0
+        else:
+            anticipation = _linear_blend_amount(dist_since_reverse_start, full_global_dist, blend_start_dist)
+        if anticipation <= 1e-6:
+            return base_global, base_local, "blend-reverse-local"
+        global_weight = base_global + (1.0 - base_global) * anticipation
+        local_weight = base_local * (1.0 - anticipation)
+        total = global_weight + local_weight
+        if total <= 1e-6:
+            return 1.0, 0.0, "global-reverse-entry"
+        return global_weight / total, local_weight / total, "blend-reverse-exit"
+
+    if dist_to_row_switch is None and dist_to_reverse_start is None:
+        return base_global, base_local, "blend-row"
+
+    full_global_dist = max(0.05, float(getattr(args, "row_switch_full_global_dist", 1.50)))
+    blend_start_dist = max(full_global_dist, float(getattr(args, "row_switch_blend_start_dist", 3.0)))
+    anticipation = 0.0
+    if dist_to_row_switch is not None:
+        anticipation = max(anticipation, _linear_blend_amount(dist_to_row_switch, full_global_dist, blend_start_dist))
+    if dist_to_reverse_start is not None:
+        anticipation = max(anticipation, _linear_blend_amount(dist_to_reverse_start, full_global_dist, blend_start_dist))
+    if anticipation <= 1e-6:
+        return base_global, base_local, "blend-row"
+
+    global_weight = base_global + (1.0 - base_global) * anticipation
+    local_weight = base_local * (1.0 - anticipation)
+    total = global_weight + local_weight
+    if total <= 1e-6:
+        return 1.0, 0.0, "global-anticipation"
+    return global_weight / total, local_weight / total, "blend-approach-maneuver"
 
 
 def _compute_global_command(
@@ -895,6 +1037,22 @@ def cmd_hybrid_autorun(args: argparse.Namespace) -> int:
                         motion = motions[target_index]
                         gear = "crab"
             row_switch_mode = gear == "crab" or abs(_safe_float(motion.get("vy"), 0.0)) > 0.05
+            reversing_mode = gear == "reverse" or _safe_float(motion.get("vx"), 0.0) < -0.03
+            upcoming_row_switch_index = None if row_switch_mode else _find_next_maneuver_index(motions, start_index + 1)
+            dist_to_row_switch = None
+            if upcoming_row_switch_index is not None:
+                dist_to_row_switch = pose.distance_to(points[upcoming_row_switch_index])
+            next_reverse_index = None if reversing_mode else _find_next_reverse_index(motions, start_index + 1)
+            dist_to_reverse_start = None
+            if next_reverse_index is not None:
+                reverse_start_index = _find_reverse_segment_start(motions, next_reverse_index)
+                if reverse_start_index is not None:
+                    dist_to_reverse_start = pose.distance_to(points[reverse_start_index])
+            dist_since_reverse_start = None
+            if reversing_mode:
+                reverse_start_index = _find_reverse_segment_start(motions, start_index)
+                if reverse_start_index is not None:
+                    dist_since_reverse_start = pose.distance_to(points[reverse_start_index])
             near_finish = target_index >= len(points) - 4
 
             if gear != current_gear:
@@ -981,9 +1139,7 @@ def cmd_hybrid_autorun(args: argparse.Namespace) -> int:
                 core.log(f"Hybrid autorun reached final area near mission end (dist={dist:.2f}). Stopping without final alignment.")
                 break
 
-            configured_local_weight = max(0.0, min(1.0, float(args.local_weight_in_row)))
-            configured_global_weight = max(0.0, min(1.0, float(args.global_weight_in_row)))
-            local_enabled_by_weight = configured_local_weight > 1e-6
+            local_enabled_by_weight = max(0.0, min(1.0, float(args.local_weight_in_row))) > 1e-6
             local_enable = (not row_switch_mode) and local_enabled_by_weight
             if ros_bridge is not None:
                 ros_bridge.publish_mode(
@@ -1001,33 +1157,17 @@ def cmd_hybrid_autorun(args: argparse.Namespace) -> int:
                 local_status = LineStatus()
                 local_cmd = TwistCommand()
 
-            if row_switch_mode:
-                global_weight = 1.0
-                local_weight = 0.0
-                mode_name = "global-row-switch"
-            elif not local_enabled_by_weight:
-                global_weight = 1.0
-                local_weight = 0.0
-                mode_name = "global-only"
-            elif local_status.obstacle_blocked:
-                global_weight = 0.0
-                local_weight = 1.0
-                mode_name = "local-block-stop"
-            elif local_status.fresh and local_status.state == "TRACK" and local_cmd.fresh:
-                global_weight = configured_global_weight
-                local_weight = configured_local_weight
-                total = global_weight + local_weight
-                if total <= 1e-6:
-                    global_weight = 1.0
-                    local_weight = 0.0
-                else:
-                    global_weight /= total
-                    local_weight /= total
-                mode_name = "blend"
-            else:
-                global_weight = 1.0
-                local_weight = 0.0
-                mode_name = "global-fallback"
+            global_weight, local_weight, mode_name = _compute_hybrid_weights(
+                args=args,
+                row_switch_mode=row_switch_mode,
+                reversing_mode=reversing_mode,
+                near_finish=near_finish,
+                local_status=local_status,
+                local_cmd=local_cmd,
+                dist_to_row_switch=dist_to_row_switch,
+                dist_to_reverse_start=dist_to_reverse_start,
+                dist_since_reverse_start=dist_since_reverse_start,
+            )
 
             body_cmd = _build_body_command(
                 gear,
@@ -1071,7 +1211,8 @@ def cmd_hybrid_autorun(args: argparse.Namespace) -> int:
                 core.log(
                     f"Hybrid control switched to {mode_name}: "
                     f"local_state={local_status.state} row_switch={row_switch_mode} "
-                    f"gw={global_weight:.2f} lw={local_weight:.2f}"
+                    f"gw={global_weight:.2f} lw={local_weight:.2f} "
+                    f"switch_dist={(dist_to_row_switch if dist_to_row_switch is not None else -1.0):.2f}"
                 )
             if now - last_cmd_log >= 1.0:
                 core.log(
@@ -1079,7 +1220,8 @@ def cmd_hybrid_autorun(args: argparse.Namespace) -> int:
                     f"global_vx={g_vx:.2f} global_vy={g_vy:.2f} global_wz={g_wz:.1f} "
                     f"local_vx={local_cmd.vx:.2f} local_wz={local_cmd.wz:.2f} "
                     f"sent_vx={sent_vx:.2f} sent_vy={sent_vy:.2f} sent_wz={sent_wz:.1f} "
-                    f"nearest_index={nearest_index} target_index={target_index} dist={dist:.2f}"
+                    f"nearest_index={nearest_index} target_index={target_index} dist={dist:.2f} "
+                    f"switch_dist={(dist_to_row_switch if dist_to_row_switch is not None else -1.0):.2f}"
                 )
                 if waiting_unlock or unlock_now:
                     core.log(f"Hybrid unlock: waiting_unlock={waiting_unlock} unlock_pulse={unlock_now}")
@@ -1163,6 +1305,8 @@ def _add_hybrid_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--ros-preview-jpeg-quality", type=int, default=35)
     parser.add_argument("--local-weight-in-row", type=float, default=0.75)
     parser.add_argument("--global-weight-in-row", type=float, default=0.25)
+    parser.add_argument("--row-switch-blend-start-dist", type=float, default=3.0)
+    parser.add_argument("--row-switch-full-global-dist", type=float, default=1.5)
 
 
 def build_parser() -> argparse.ArgumentParser:

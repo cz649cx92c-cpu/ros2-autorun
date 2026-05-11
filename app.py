@@ -1358,6 +1358,15 @@ class MainWindow:
         self.preview_source_text.set("Waiting for preview stream")
         self.scene_status_text.set("Waiting")
 
+    def _clear_camera_preview_only(self, text: str = "Waiting for segmented preview") -> None:
+        self.pending_camera_frame = None
+        if self.camera_monitor is not None:
+            self.camera_monitor.reset()
+        self.camera_photo = None
+        self.camera_label.configure(image="", text=text)
+        self.last_camera_render_at = 0.0
+        self.preview_source_text.set(text)
+
     def _visual_stream_allowed(self) -> bool:
         return self.task_worker is not None or self._active_localization_worker() is not None
 
@@ -1617,6 +1626,8 @@ class MainWindow:
         else:
             if self.task_worker is not None and self.task_worker.worker_id == worker_id:
                 self.task_worker = None
+        if label == "Hybrid Autorun" and code != 0 and self._hybrid_local_guidance_enabled():
+            self._clear_camera_preview_only("Segmented preview unavailable")
         if stopped:
             self._log(f"{label} stopped with exit code {code}")
         else:
@@ -1730,6 +1741,7 @@ class MainWindow:
         if use_local_guidance:
             self._log("Hybrid autorun requested. The active localization session will be reused, then the system will start linerun and blend local row guidance with global replay.")
             self._stop_uvc_preview_publisher(log_message=False)
+            self._clear_camera_preview_only("Waiting for segmented preview")
         else:
             self._log("Hybrid autorun requested. The active localization session will be reused, then the system will run pure global replay and keep the raw UVC preview visible.")
             self._start_uvc_preview_publisher(auto=True)
