@@ -1280,6 +1280,12 @@ class MainWindow:
             args.append("--line-require-npu")
         return args
 
+    def _hybrid_local_guidance_enabled(self) -> bool:
+        try:
+            return float(self.local_weight_in_row_var.get().strip() or "0.75") > 1e-6
+        except Exception:
+            return True
+
     def _build_status_tab(self) -> ttk.Frame:
         tab = ttk.Frame(self.notebook, padding=16)
         control_group = ttk.LabelFrame(tab, text="Status Monitor", padding=14)
@@ -1413,7 +1419,28 @@ class MainWindow:
             self.root.after(80, self._pump_events)
 
     def _watch_visual_streams(self) -> None:
-        return
+        if not self._visual_stream_allowed():
+            return
+        task_label = self.task_worker.label if self.task_worker is not None else ""
+        if task_label != "Hybrid Autorun":
+            return
+        if self._hybrid_local_guidance_enabled():
+            return
+        source_text = self.preview_source_text.get()
+        using_raw_uvc = (UVC_PREVIEW_TOPIC in source_text) or ("Waiting for preview stream" in source_text)
+        if not using_raw_uvc:
+            return
+        now = time.monotonic()
+        if self.last_camera_render_at > 0.0 and (now - self.last_camera_render_at) < 1.5:
+            return
+        if now < self.camera_restart_backoff_until:
+            return
+        self.camera_restart_backoff_until = now + 3.0
+        self._log("Hybrid Autorun preview appears stale. Restarting raw UVC preview publisher...")
+        self._stop_uvc_preview_publisher(log_message=False)
+        if self.camera_monitor is not None:
+            self.camera_monitor.reset()
+        self._start_uvc_preview_publisher(auto=True)
 
     def _selected_map_path(self, combo: ttk.Combobox) -> Path | None:
         label = combo.get().strip()
@@ -1458,6 +1485,9 @@ class MainWindow:
         self.record_localization_worker = worker
         self.replay_localization_worker = worker
         self._set_localization_status("Starting...")
+        self._stop_uvc_preview_publisher(log_message=False)
+        self._start_camera_monitor(auto=True)
+        self._clear_visuals()
         self._start_uvc_preview_publisher(auto=True)
         worker.start()
 
@@ -1696,8 +1726,13 @@ class MainWindow:
         if not self.line_model_var.get().strip():
             messagebox.showwarning("No Line Model", "Set the linerun model path first.")
             return
-        self._log("Hybrid autorun requested. The active localization session will be reused, then the system will start linerun and blend local row guidance with global replay.")
-        self._stop_uvc_preview_publisher(log_message=False)
+        use_local_guidance = self._hybrid_local_guidance_enabled()
+        if use_local_guidance:
+            self._log("Hybrid autorun requested. The active localization session will be reused, then the system will start linerun and blend local row guidance with global replay.")
+            self._stop_uvc_preview_publisher(log_message=False)
+        else:
+            self._log("Hybrid autorun requested. The active localization session will be reused, then the system will run pure global replay and keep the raw UVC preview visible.")
+            self._start_uvc_preview_publisher(auto=True)
         self._start_camera_monitor(auto=True)
         self._start_task(
             "Hybrid Autorun",
