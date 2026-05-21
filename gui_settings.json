@@ -4,7 +4,7 @@
   "body_y_offset_m": "-0.1",
   "roll_gain": "0.80",
   "pitch_gain": "1.0",
-  "line_model": "/root/ugv/line/models/your_model.rknn",
+  "line_model": "/root/ugv/line/models/best_from_input_152.rknn",
   "line_source": "/dev/video0",
   "line_camera_fourcc": "MJPG",
   "line_resolution": "1024x768",
@@ -21,8 +21,8 @@
   "line_kp_offset": "7.0",
   "line_kp_heading": "0.08",
   "line_max_wz": "1.6",
-  "local_weight_in_row": "0.8",
-  "global_weight_in_row": "0.2",
+  "local_weight_in_row": "1",
+  "global_weight_in_row": "0",
   "line_require_npu": true,
   "mapping_recorddata": false
 }

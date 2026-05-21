@@ -798,13 +798,13 @@ class MainWindow:
         self.mapping_name_var = tk.StringVar(value=generated_name("map"))
         self.mapping_recorddata_var = tk.BooleanVar(value=False)
         self.record_name_var = tk.StringVar(value=generated_name("mission"))
-        self.line_model_var = tk.StringVar(value="/root/ugv/line/models/your_model.rknn")
+        self.line_model_var = tk.StringVar(value="/root/ugv/line/models/best_from_input_152.rknn")
         self.line_source_var = tk.StringVar(value="/dev/video0")
         self.line_camera_fourcc_var = tk.StringVar(value="MJPG")
         self.line_resolution_var = tk.StringVar(value="1024x768")
         self.line_classes_var = tk.StringVar(value="1")
         self.line_target_class_var = tk.StringVar(value="0")
-        self.line_cruise_vx_var = tk.StringVar(value="0.12")
+        self.line_cruise_vx_var = tk.StringVar(value="0.20")
         self.line_camera_width_var = tk.StringVar(value="1024")
         self.line_camera_height_var = tk.StringVar(value="768")
         self.line_camera_fps_var = tk.StringVar(value="10")
@@ -817,8 +817,8 @@ class MainWindow:
         self.line_max_wz_var = tk.StringVar(value="1.6")
         self.line_capture_info_text = tk.StringVar(value="")
         self.line_seg_info_text = tk.StringVar(value="")
-        self.local_weight_in_row_var = tk.StringVar(value="0.75")
-        self.global_weight_in_row_var = tk.StringVar(value="0.25")
+        self.local_weight_in_row_var = tk.StringVar(value="0.5")
+        self.global_weight_in_row_var = tk.StringVar(value="0.5")
         self.line_require_npu_var = tk.BooleanVar(value=True)
         self.sensor_height_var = tk.StringVar(value=DEFAULT_SENSOR_HEIGHT_M)
         self.body_x_offset_var = tk.StringVar(value=DEFAULT_BODY_X_OFFSET_M)
@@ -894,7 +894,7 @@ class MainWindow:
             "line_resolution": self.line_resolution_var.get().strip() or "1024x768",
             "line_classes": self.line_classes_var.get().strip() or "1",
             "line_target_class": self.line_target_class_var.get().strip() or "0",
-            "line_cruise_vx": self.line_cruise_vx_var.get().strip() or "0.12",
+            "line_cruise_vx": self.line_cruise_vx_var.get().strip() or "0.20",
             "line_camera_width": self.line_camera_width_var.get().strip() or "1024",
             "line_camera_height": self.line_camera_height_var.get().strip() or "768",
             "line_camera_fps": self.line_camera_fps_var.get().strip() or "10",
@@ -905,8 +905,8 @@ class MainWindow:
             "line_kp_offset": self.line_kp_offset_var.get().strip() or "7.0",
             "line_kp_heading": self.line_kp_heading_var.get().strip() or "0.08",
             "line_max_wz": self.line_max_wz_var.get().strip() or "1.6",
-            "local_weight_in_row": self.local_weight_in_row_var.get().strip() or "0.75",
-            "global_weight_in_row": self.global_weight_in_row_var.get().strip() or "0.25",
+            "local_weight_in_row": self.local_weight_in_row_var.get().strip() or "0.5",
+            "global_weight_in_row": self.global_weight_in_row_var.get().strip() or "0.5",
             "line_require_npu": bool(self.line_require_npu_var.get()),
             "mapping_recorddata": bool(self.mapping_recorddata_var.get()),
         }
@@ -1273,7 +1273,7 @@ class MainWindow:
             "--line-source", self.line_source_var.get().strip() or "/dev/video0",
             "--line-classes", self.line_classes_var.get().strip() or "1",
             "--line-target-class", self.line_target_class_var.get().strip() or "0",
-            "--line-cruise-vx", self.line_cruise_vx_var.get().strip() or "0.12",
+            "--line-cruise-vx", self.line_cruise_vx_var.get().strip() or "0.20",
             "--line-camera-width", self.line_camera_width_var.get().strip() or "1024",
             "--line-camera-height", self.line_camera_height_var.get().strip() or "768",
             "--line-camera-fps", line_camera_fps,
@@ -1285,8 +1285,8 @@ class MainWindow:
             "--line-kp-offset", self.line_kp_offset_var.get().strip() or "7.0",
             "--line-kp-heading", self.line_kp_heading_var.get().strip() or "0.08",
             "--line-max-wz", self.line_max_wz_var.get().strip() or "1.6",
-            "--local-weight-in-row", self.local_weight_in_row_var.get().strip() or "0.75",
-            "--global-weight-in-row", self.global_weight_in_row_var.get().strip() or "0.25",
+            "--local-weight-in-row", self.local_weight_in_row_var.get().strip() or "0.5",
+            "--global-weight-in-row", self.global_weight_in_row_var.get().strip() or "0.5",
         ]
         if self.line_require_npu_var.get():
             args.append("--line-require-npu")
@@ -1294,7 +1294,7 @@ class MainWindow:
 
     def _hybrid_local_guidance_enabled(self) -> bool:
         try:
-            return float(self.local_weight_in_row_var.get().strip() or "0.75") > 1e-6
+            return float(self.local_weight_in_row_var.get().strip() or "0.5") > 1e-6
         except Exception:
             return True
 

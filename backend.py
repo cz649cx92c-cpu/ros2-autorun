@@ -39,6 +39,7 @@ SHADOW_CATKIN_SETUP = SHADOW_CATKIN_WS / "devel" / "setup.bash"
 SHADOW_HOST_SDK_BIN = SHADOW_CATKIN_WS / "devel" / "lib" / "odin_ros_driver" / "host_sdk_sample"
 LINERUN_ROOT = ROOT / "linerun"
 LINERUN_PYTHON = Path("/opt/miniconda3/envs/py310/bin/python")
+LINERUN_GUI_CONFIG = LINERUN_ROOT / "plant_row_gui_config.json"
 
 for path in (MISSIONS_DIR, LOG_DIR, ROS_LOG_DIR, RUNTIME_DIR, TEMP_CONFIG_DIR, VENDOR_ROOT, SHADOW_CATKIN_SRC):
     path.mkdir(parents=True, exist_ok=True)
@@ -411,6 +412,68 @@ class TwistCommand:
     fresh: bool = False
 
 
+def _load_linerun_gui_config() -> dict[str, Any]:
+    try:
+        data = json.loads(LINERUN_GUI_CONFIG.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _config_float(config: dict[str, Any], key: str, default: float) -> float:
+    try:
+        value = config.get(key, default)
+        return float(value)
+    except Exception:
+        return float(default)
+
+
+def _config_str(config: dict[str, Any], key: str, default: str) -> str:
+    value = config.get(key, default)
+    text = str(value).strip()
+    return text if text else str(default)
+
+
+def _linerun_resolution(config: dict[str, Any], default_width: int, default_height: int) -> tuple[int, int]:
+    text = _config_str(config, "resolution", f"{int(default_width)}x{int(default_height)}").lower()
+    if "x" not in text:
+        return int(default_width), int(default_height)
+    width_text, height_text = text.split("x", 1)
+    try:
+        width = int(float(width_text.strip()))
+        height = int(float(height_text.strip()))
+    except Exception:
+        return int(default_width), int(default_height)
+    return max(1, width), max(1, height)
+
+
+def _linerun_drive_settings(config: dict[str, Any], *, reverse: bool, args: argparse.Namespace) -> tuple[float, float, float]:
+    speed = abs(_config_float(config, "cruise_vx", float(args.line_cruise_vx)))
+    if reverse:
+        offset = _config_float(
+            config,
+            "reverse_target_center_offset_px",
+            _config_float(config, "target_center_offset_px", float(args.line_target_center_offset_px)),
+        )
+        angle = _config_float(
+            config,
+            "reverse_vehicle_direction_angle_deg",
+            _config_float(config, "vehicle_direction_angle_deg", float(args.line_vehicle_direction_angle_deg)),
+        )
+    else:
+        offset = _config_float(
+            config,
+            "forward_target_center_offset_px",
+            _config_float(config, "target_center_offset_px", float(args.line_target_center_offset_px)),
+        )
+        angle = _config_float(
+            config,
+            "forward_vehicle_direction_angle_deg",
+            _config_float(config, "vehicle_direction_angle_deg", float(args.line_vehicle_direction_angle_deg)),
+        )
+    return speed, offset, angle
+
+
 class LineRunRosBridge:
     def __init__(self, cmd_vel_topic: str, status_topic: str, drive_mode_topic: str) -> None:
         self.rospy = core.ensure_ros_node("autorun_final_bridge")
@@ -511,36 +574,41 @@ class LineRunRosBridge:
 
 
 class LineRunProcess(core.ManagedProcess):
-    def __init__(self, args: argparse.Namespace, log_path: Path) -> None:
-        line_camera_fps = int(round(float(args.line_camera_fps)))
+    def __init__(self, args: argparse.Namespace, log_path: Path, linerun_config: dict[str, Any] | None = None) -> None:
+        config = linerun_config or {}
+        line_camera_fps = int(round(_config_float(config, "camera_fps", float(args.line_camera_fps))))
+        line_width, line_height = _linerun_resolution(config, int(args.line_camera_width), int(args.line_camera_height))
         line_python = str(LINERUN_PYTHON if LINERUN_PYTHON.exists() else Path(sys.executable))
+        line_model = Path(str(args.line_model)).expanduser()
+        if not line_model.exists():
+            raise RuntimeError(f"linerun model file not found: {line_model}")
         cmd = [
             line_python,
             str(LINERUN_ROOT / "plant_row_runner.py"),
             "--model",
-            args.line_model,
+            str(line_model),
             "--source",
-            args.line_source,
+            _config_str(config, "source", args.line_source),
             "--classes",
             str(args.line_classes),
             "--target-class",
             str(args.line_target_class),
             "--camera-width",
-            str(args.line_camera_width),
+            str(line_width),
             "--camera-height",
-            str(args.line_camera_height),
+            str(line_height),
             "--camera-fps",
             str(line_camera_fps),
             "--camera-fourcc",
-            args.line_camera_fourcc,
+            _config_str(config, "camera_fourcc", args.line_camera_fourcc),
             "--max-fps",
-            str(args.line_max_fps),
+            str(_config_float(config, "max_fps", float(args.line_max_fps))),
             "--cruise-vx",
-            str(args.line_cruise_vx),
+            str(_config_float(config, "cruise_vx", float(args.line_cruise_vx))),
             "--target-center-offset-px",
-            str(args.line_target_center_offset_px),
+            str(_config_float(config, "target_center_offset_px", float(args.line_target_center_offset_px))),
             "--vehicle-direction-angle-deg",
-            str(args.line_vehicle_direction_angle_deg),
+            str(_config_float(config, "vehicle_direction_angle_deg", float(args.line_vehicle_direction_angle_deg))),
             "--steer-sign",
             str(args.line_steer_sign),
             "--kp-offset",
@@ -549,26 +617,6 @@ class LineRunProcess(core.ManagedProcess):
             str(args.line_kp_heading),
             "--max-wz",
             str(args.line_max_wz),
-            "--reverse-wz-sign",
-            "1.0",
-            "--reverse-turn-scale",
-            "1.0",
-            "--reverse-kp-offset",
-            str(args.line_kp_offset),
-            "--reverse-kp-heading",
-            str(args.line_kp_heading),
-            "--reverse-max-wz",
-            str(args.line_max_wz),
-            "--reverse-control-lookahead-ratio",
-            "0.78",
-            "--reverse-crossing-reset-norm",
-            "0.16",
-            "--reverse-side-avoid-gain",
-            "0.0",
-            "--reverse-near-gain",
-            "0.0",
-            "--reverse-heading-turn-gain",
-            "0.0",
             "--period-ms",
             str(args.line_period_ms),
             "--interface",
@@ -614,6 +662,43 @@ class LineRunProcess(core.ManagedProcess):
         super().__init__(cmd, LINERUN_ROOT, log_path)
 
 
+def _wait_for_linerun_ready(
+    ros_bridge: LineRunRosBridge,
+    args: argparse.Namespace,
+    *,
+    linerun_config: dict[str, Any] | None = None,
+    timeout_s: float = 5.0,
+) -> bool:
+    config = linerun_config or {}
+    cruise_vx, offset_px, direction_angle_deg = _linerun_drive_settings(config, reverse=False, args=args)
+    deadline = time.monotonic() + max(0.1, float(timeout_s))
+    last_log = 0.0
+    while time.monotonic() < deadline and not core.STOP_REQUESTED:
+        ros_bridge.publish_mode(
+            enable=True,
+            reverse=False,
+            cruise_vx=cruise_vx,
+            gear="4t4d",
+            low_beam=args.line_low_beam,
+            target_center_offset_px=offset_px,
+            vehicle_direction_angle_deg=direction_angle_deg,
+        )
+        status = ros_bridge.status_snapshot()
+        cmd = ros_bridge.cmd_snapshot()
+        if cmd.fresh:
+            core.log("linerun local guidance is ready for hybrid replay.")
+            return True
+        now = time.monotonic()
+        if now - last_log >= 1.0:
+            core.log(
+                f"Waiting for linerun local guidance: state={status.state} "
+                f"fresh={status.fresh} cmd_fresh={cmd.fresh}"
+            )
+            last_log = now
+        time.sleep(0.10)
+    return False
+
+
 def _safe_float(value: Any, default: float = 0.0) -> float:
     try:
         return float(value)
@@ -631,7 +716,53 @@ def _linear_blend_amount(value: float, start: float, end: float) -> float:
     return (end - value) / (end - start)
 
 
-def _find_next_maneuver_index(
+def _reverse_entry_turn_scale(dist_since_reverse_start: float | None) -> tuple[float, float]:
+    if dist_since_reverse_start is None:
+        return 1.0, 1.2
+    dist = max(0.0, float(dist_since_reverse_start))
+    if dist >= 0.9:
+        return 1.0, 1.2
+    amount = dist / 0.9
+    scale = 0.25 + 0.75 * amount
+    max_wz = 0.35 + 0.85 * amount
+    return scale, max_wz
+
+
+def _snapshot_age_seconds(updated_at: float) -> float:
+    if updated_at <= 0.0:
+        return 1e9
+    return max(0.0, time.monotonic() - updated_at)
+
+
+def _line_status_is_tracking_ready(
+    status: LineStatus,
+    *,
+    allow_stale_hold: bool = False,
+    hold_s: float = 1.2,
+) -> bool:
+    if status.state != "TRACK":
+        return False
+    if status.fresh:
+        return True
+    if not allow_stale_hold or not status.drive_enable:
+        return False
+    return _snapshot_age_seconds(status.updated_at) <= max(0.05, float(hold_s))
+
+
+def _local_cmd_is_usable(
+    cmd: TwistCommand,
+    *,
+    allow_stale_hold: bool = False,
+    hold_s: float = 1.2,
+) -> bool:
+    if cmd.fresh:
+        return True
+    if not allow_stale_hold:
+        return False
+    return _snapshot_age_seconds(cmd.updated_at) <= max(0.05, float(hold_s))
+
+
+def _find_next_row_switch_index(
     motions: list[dict[str, Any]],
     start_index: int,
     *,
@@ -641,8 +772,7 @@ def _find_next_maneuver_index(
     for idx in range(max(0, start_index), end):
         motion = motions[idx]
         gear = core._resolve_replay_gear(motion, None)
-        vx = _safe_float(motion.get("vx"), 0.0)
-        if vx < -0.03 or gear == "crab" or abs(_safe_float(motion.get("vy"), 0.0)) > 0.05:
+        if gear == "crab" or abs(_safe_float(motion.get("vy"), 0.0)) > 0.05:
             return idx
     return None
 
@@ -687,6 +817,74 @@ def _find_reverse_segment_start(
     return start
 
 
+def _crab_reference_vy(
+    points: list[core.Pose2D],
+    pose: core.Pose2D,
+    motions: list[dict[str, Any]],
+    start_index: int,
+    target_index: int,
+    send_state: core.MotionSendState,
+) -> float:
+    if not motions:
+        return 0.0
+    search_start = send_state.crab_target_index if send_state.crab_target_index >= 0 else start_index
+    search_end = send_state.crab_locked_until if send_state.crab_locked_until >= search_start else target_index
+    search_start = max(0, min(search_start, len(motions) - 1))
+    search_end = max(search_start, min(search_end, len(motions) - 1))
+    best_vy = 0.0
+    for idx in range(search_start, search_end + 1):
+        vy = _safe_float(motions[idx].get("vy"), 0.0)
+        if abs(vy) > abs(best_vy):
+            best_vy = vy
+    if abs(best_vy) >= 0.03:
+        return best_vy
+    for idx in range(max(0, start_index - 4), min(len(motions), target_index + 5)):
+        vy = _safe_float(motions[idx].get("vy"), 0.0)
+        if abs(vy) > abs(best_vy):
+            best_vy = vy
+    if abs(best_vy) >= 0.03:
+        return best_vy
+    if not points:
+        return 0.0
+    ref_index = max(0, min(start_index, len(points) - 1))
+    tgt_index = max(0, min(target_index, len(points) - 1))
+    ref_point = points[ref_index]
+    target = points[tgt_index]
+    _, target_lateral_err = core._body_frame_error(pose, target)
+    if abs(target_lateral_err) >= 0.02:
+        return math.copysign(0.12, target_lateral_err)
+    dx = target.x - ref_point.x
+    dy = target.y - ref_point.y
+    segment_lateral = -math.sin(pose.yaw) * dx + math.cos(pose.yaw) * dy
+    if abs(segment_lateral) >= 0.02:
+        return math.copysign(0.12, segment_lateral)
+    return 0.0
+
+
+def _crab_motion_active(motion: dict[str, Any]) -> bool:
+    return (
+        abs(_safe_float(motion.get("vy"), 0.0)) >= 0.05
+        or abs(_safe_float(motion.get("vx"), 0.0)) >= 0.05
+        or abs(_safe_float(motion.get("wz"), 0.0)) >= 3.0
+    )
+
+
+def _skip_crab_tail_index(
+    motions: list[dict[str, Any]],
+    start_index: int,
+) -> int:
+    if not motions:
+        return 0
+    idx = max(0, min(start_index, len(motions) - 1))
+    motion = motions[idx]
+    if core._resolve_replay_gear(motion, None) != "crab":
+        return idx
+    if _crab_motion_active(motion):
+        return idx
+    crab_end = core._find_gear_segment_end(motions, idx, "crab")
+    return min(len(motions) - 1, crab_end + 1)
+
+
 def _compute_hybrid_weights(
     *,
     args: argparse.Namespace,
@@ -698,21 +896,28 @@ def _compute_hybrid_weights(
     dist_to_row_switch: float | None,
     dist_to_reverse_start: float | None,
     dist_since_reverse_start: float | None,
-) -> tuple[float, float, str]:
+) -> tuple[float, float, str, bool]:
     configured_local_weight = max(0.0, min(1.0, float(args.local_weight_in_row)))
     configured_global_weight = max(0.0, min(1.0, float(args.global_weight_in_row)))
     local_enabled_by_weight = configured_local_weight > 1e-6
+    local_only_base = configured_global_weight <= 1e-6 and local_enabled_by_weight and not row_switch_mode
+    local_only_requested = (
+        local_only_base
+        and (reversing_mode or not near_finish)
+    )
+    allow_stale_local_hold = (
+        reversing_mode
+        and local_only_requested
+    )
 
     if row_switch_mode:
-        return 1.0, 0.0, "global-row-switch"
+        return 1.0, 0.0, "global-row-switch", False
     if not local_enabled_by_weight:
-        return 1.0, 0.0, "global-only"
+        return 1.0, 0.0, "global-only", False
     if local_status.obstacle_blocked:
-        if near_finish or row_switch_mode:
-            return 1.0, 0.0, "global-near-finish-blocked"
-        return 0.0, 1.0, "local-block-stop"
-    if not (local_status.fresh and local_status.state == "TRACK" and local_cmd.fresh):
-        return 1.0, 0.0, "global-fallback"
+        if local_only_requested and reversing_mode:
+            return 0.0, 1.0, "local-block-stop", False
+        return 1.0, 0.0, "global-near-finish-blocked", False
 
     total = configured_global_weight + configured_local_weight
     if total <= 1e-6:
@@ -722,43 +927,43 @@ def _compute_hybrid_weights(
         base_global = configured_global_weight / total
         base_local = configured_local_weight / total
 
-    if reversing_mode:
-        if dist_since_reverse_start is None:
-            return base_global, base_local, "blend-reverse-local"
-        full_global_dist = max(0.05, float(getattr(args, "row_switch_full_global_dist", 1.50)))
-        blend_start_dist = max(full_global_dist, float(getattr(args, "row_switch_blend_start_dist", 3.0)))
-        if dist_since_reverse_start <= full_global_dist:
-            anticipation = 1.0
-        else:
-            anticipation = _linear_blend_amount(dist_since_reverse_start, full_global_dist, blend_start_dist)
-        if anticipation <= 1e-6:
-            return base_global, base_local, "blend-reverse-local"
-        global_weight = base_global + (1.0 - base_global) * anticipation
-        local_weight = base_local * (1.0 - anticipation)
-        total = global_weight + local_weight
-        if total <= 1e-6:
-            return 1.0, 0.0, "global-reverse-entry"
-        return global_weight / total, local_weight / total, "blend-reverse-exit"
+    local_cmd_ready = _local_cmd_is_usable(
+        local_cmd,
+        allow_stale_hold=allow_stale_local_hold,
+    )
+    using_stale_local_hold = allow_stale_local_hold and (
+        not local_cmd.fresh and local_cmd_ready
+    )
+    if local_only_requested:
+        if not local_cmd_ready:
+            return 0.0, 1.0, "local-only-wait", allow_stale_local_hold
+        return 0.0, 1.0, ("local-only-hold" if using_stale_local_hold else "local-only"), using_stale_local_hold
+
+    local_tracking_ready = _line_status_is_tracking_ready(
+        local_status,
+        allow_stale_hold=allow_stale_local_hold,
+    )
+    if not (local_tracking_ready and local_cmd_ready):
+        return 1.0, 0.0, "global-fallback", False
 
     if dist_to_row_switch is None and dist_to_reverse_start is None:
-        return base_global, base_local, "blend-row"
+        return base_global, base_local, ("blend-row-local-hold" if using_stale_local_hold else "blend-row"), using_stale_local_hold
 
     full_global_dist = max(0.05, float(getattr(args, "row_switch_full_global_dist", 1.50)))
     blend_start_dist = max(full_global_dist, float(getattr(args, "row_switch_blend_start_dist", 3.0)))
     anticipation = 0.0
     if dist_to_row_switch is not None:
         anticipation = max(anticipation, _linear_blend_amount(dist_to_row_switch, full_global_dist, blend_start_dist))
-    if dist_to_reverse_start is not None:
-        anticipation = max(anticipation, _linear_blend_amount(dist_to_reverse_start, full_global_dist, blend_start_dist))
     if anticipation <= 1e-6:
-        return base_global, base_local, "blend-row"
+        return base_global, base_local, "blend-row", False
 
     global_weight = base_global + (1.0 - base_global) * anticipation
     local_weight = base_local * (1.0 - anticipation)
     total = global_weight + local_weight
     if total <= 1e-6:
-        return 1.0, 0.0, "global-anticipation"
-    return global_weight / total, local_weight / total, "blend-approach-maneuver"
+        return 1.0, 0.0, "global-anticipation", False
+    mode_name = "blend-approach-maneuver-local-hold" if using_stale_local_hold else "blend-approach-maneuver"
+    return global_weight / total, local_weight / total, mode_name, using_stale_local_hold
 
 
 def _compute_global_command(
@@ -787,13 +992,18 @@ def _compute_global_command(
     cmd_vx = core._clamp(forward_err * 0.75, -vx_cap, vx_cap)
     cmd_vy = 0.0
     if gear == "crab":
-        vy_cap = max(abs(_safe_float(motion.get("vy"), 0.0)), 0.20)
+        recorded_vy = _safe_float(motion.get("vy"), 0.0)
+        recorded_vy_abs = abs(recorded_vy)
+        vy_cap = max(recorded_vy_abs, 0.20)
         cmd_vx = 0.0
         cmd_vy = core._clamp(lateral_err * 0.95, -vy_cap, vy_cap)
         if abs(lateral_err) < 0.03:
             cmd_vy = 0.0
         if abs(heading_err_deg) > 18.0:
             cmd_vy = core._clamp(cmd_vy, -0.08, 0.08)
+        if abs(cmd_vy) < 0.035 and dist > 0.18 and recorded_vy_abs > 0.03:
+            crab_floor = min(vy_cap, max(0.08, min(recorded_vy_abs, 0.14)))
+            cmd_vy = math.copysign(crab_floor, recorded_vy)
         cmd_wz = core._clamp(heading_err_deg * 0.50, -6.0, 6.0)
     else:
         cmd_vx = core._clamp(cmd_vx, -0.16, 0.16)
@@ -824,14 +1034,29 @@ def _build_body_command(
     local_status: LineStatus,
     global_weight: float,
     local_weight: float,
+    allow_stale_local_hold: bool = False,
 ) -> core.BodyCommand:
     g_vx, g_vy, g_wz = global_cmd
     if gear == "crab":
         return core.BodyCommand(gear=gear, vx=g_vx, vy=g_vy, wz=g_wz)
-    if local_weight <= 1e-6 or not local_cmd.fresh:
+    if local_weight <= 1e-6:
         return core.BodyCommand(gear=gear, vx=g_vx, vy=0.0, wz=g_wz)
-    if local_status.obstacle_blocked:
+    if local_status.obstacle_blocked and global_weight <= 1e-6:
         return core.BodyCommand(gear=gear, vx=0.0, vy=0.0, wz=0.0)
+    local_cmd_ready = _local_cmd_is_usable(
+        local_cmd,
+        allow_stale_hold=allow_stale_local_hold,
+    )
+    if global_weight <= 1e-6:
+        if not local_cmd_ready:
+            return core.BodyCommand(gear=gear, vx=0.0, vy=0.0, wz=0.0)
+        return core.BodyCommand(gear=gear, vx=local_cmd.vx, vy=0.0, wz=local_cmd.wz)
+    local_tracking_ready = _line_status_is_tracking_ready(
+        local_status,
+        allow_stale_hold=allow_stale_local_hold,
+    )
+    if not (local_tracking_ready and local_cmd_ready):
+        return core.BodyCommand(gear=gear, vx=g_vx, vy=0.0, wz=g_wz)
     vx = local_weight * local_cmd.vx + global_weight * g_vx
     wz = local_weight * local_cmd.wz + global_weight * g_wz
     return core.BodyCommand(gear=gear, vx=vx, vy=0.0, wz=wz)
@@ -881,6 +1106,17 @@ def _find_tracking_index_same_mode(
     return best_any_index
 
 
+def _segment_progress_ratio(start: core.Pose2D, end: core.Pose2D, pose: core.Pose2D) -> float:
+    dx = end.x - start.x
+    dy = end.y - start.y
+    length_sq = dx * dx + dy * dy
+    if length_sq <= 1e-9:
+        return 0.0
+    px = pose.x - start.x
+    py = pose.y - start.y
+    return (px * dx + py * dy) / length_sq
+
+
 def _advance_dense_tracking_index(
     points: list[core.Pose2D],
     motions: list[dict[str, Any]],
@@ -921,6 +1157,193 @@ def _advance_dense_tracking_index(
             continue
         break
     return idx
+
+
+def _advance_tracking_progress_index(
+    points: list[core.Pose2D],
+    motions: list[dict[str, Any]],
+    current_index: int,
+    pose: core.Pose2D,
+    current_gear: str | None,
+    *,
+    max_skip: int = 24,
+) -> int:
+    if not points:
+        return 0
+    idx = max(0, min(current_index, len(points) - 1))
+    skipped = 0
+    while idx + 1 < len(points) and skipped < max_skip:
+        next_idx = idx + 1
+        mode = _motion_segment_mode(motions[min(idx, len(motions) - 1)], current_gear)
+        next_mode = _motion_segment_mode(motions[min(next_idx, len(motions) - 1)], current_gear)
+        if next_mode != mode:
+            break
+        cur = points[idx]
+        nxt = points[next_idx]
+        spacing = cur.distance_to(nxt)
+        progress = _segment_progress_ratio(cur, nxt, pose)
+        cur_dist = pose.distance_to(cur)
+        next_dist = pose.distance_to(nxt)
+        if spacing <= 1e-4:
+            idx = next_idx
+            skipped += 1
+            continue
+        if progress >= 0.70:
+            idx = next_idx
+            skipped += 1
+            continue
+        if progress >= 0.45 and next_dist <= cur_dist + 0.01:
+            idx = next_idx
+            skipped += 1
+            continue
+        if spacing <= 0.06 and progress >= 0.20 and next_dist <= max(0.16, cur_dist + 0.02):
+            idx = next_idx
+            skipped += 1
+            continue
+        break
+    return idx
+
+
+def _advance_reverse_progress_index(
+    points: list[core.Pose2D],
+    motions: list[dict[str, Any]],
+    current_index: int,
+    pose: core.Pose2D,
+    current_gear: str | None,
+    *,
+    max_skip: int = 18,
+) -> int:
+    if not points:
+        return 0
+    idx = max(0, min(current_index, len(points) - 1))
+    skipped = 0
+    while idx + 1 < len(points) and skipped < max_skip:
+        if _motion_segment_mode(motions[min(idx, len(motions) - 1)], current_gear) != "reverse":
+            break
+        next_idx = idx + 1
+        if _motion_segment_mode(motions[min(next_idx, len(motions) - 1)], current_gear) != "reverse":
+            break
+        cur = points[idx]
+        nxt = points[next_idx]
+        spacing = cur.distance_to(nxt)
+        progress = _segment_progress_ratio(cur, nxt, pose)
+        cur_dist = pose.distance_to(cur)
+        next_dist = pose.distance_to(nxt)
+        if spacing <= 1e-4:
+            idx = next_idx
+            skipped += 1
+            continue
+        if progress >= 0.55:
+            idx = next_idx
+            skipped += 1
+            continue
+        if next_dist + 0.03 < cur_dist:
+            idx = next_idx
+            skipped += 1
+            continue
+        if spacing <= 0.08 and next_dist <= max(0.18, cur_dist + 0.02):
+            idx = next_idx
+            skipped += 1
+            continue
+        break
+    return idx
+
+
+def _tracking_lookahead_distance(motion: dict[str, Any], gear: str) -> float:
+    vx = abs(_safe_float(motion.get("vx"), 0.0))
+    vy = abs(_safe_float(motion.get("vy"), 0.0))
+    wz = abs(_safe_float(motion.get("wz"), 0.0))
+    planar_speed = math.hypot(vx, vy)
+    if gear == "crab":
+        lookahead = 0.14 + 0.35 * min(planar_speed, 0.20)
+        if wz > 8.0:
+            lookahead -= 0.02
+        return core._clamp(lookahead, 0.12, 0.22)
+    if vx < -0.03:
+        lookahead = 0.18 + 0.45 * min(planar_speed, 0.20)
+        if wz > 10.0:
+            lookahead -= 0.03
+        return core._clamp(lookahead, 0.16, 0.28)
+    lookahead = 0.24 + 0.55 * min(planar_speed, 0.25)
+    if wz > 14.0:
+        lookahead -= 0.05
+    elif wz > 8.0:
+        lookahead -= 0.03
+    return core._clamp(lookahead, 0.20, 0.40)
+
+
+def _select_reverse_target_index(
+    points: list[core.Pose2D],
+    motions: list[dict[str, Any]],
+    start_index: int,
+    current_gear: str | None,
+    *,
+    lookahead_m: float = 0.34,
+    max_span: int = 18,
+) -> int:
+    if not points:
+        return 0
+    start = max(0, min(start_index, len(points) - 1))
+    target = start
+    accum = 0.0
+    for _ in range(max_span):
+        if target + 1 >= len(points):
+            break
+        next_idx = target + 1
+        if _motion_segment_mode(motions[min(next_idx, len(motions) - 1)], current_gear) != "reverse":
+            break
+        accum += points[target].distance_to(points[next_idx])
+        target = next_idx
+        if accum >= lookahead_m:
+            break
+    return max(target, min(len(points) - 1, start + 2))
+
+
+def _select_lookahead_target_index(
+    points: list[core.Pose2D],
+    motions: list[dict[str, Any]],
+    start_index: int,
+    current_gear: str | None,
+    *,
+    lookahead_m: float | None = None,
+    max_span: int = 24,
+) -> int:
+    if not points:
+        return 0
+    start = max(0, min(start_index, len(points) - 1))
+    motion_here = motions[min(start, len(motions) - 1)]
+    mode = _motion_segment_mode(motion_here, current_gear)
+    target = start
+    accum = 0.0
+    desired = lookahead_m
+    if desired is None:
+        desired = _tracking_lookahead_distance(motion_here, core._resolve_replay_gear(motion_here, current_gear))
+    for _ in range(max_span):
+        if target + 1 >= len(points):
+            break
+        next_idx = target + 1
+        next_mode = _motion_segment_mode(motions[min(next_idx, len(motions) - 1)], current_gear)
+        if next_mode != mode:
+            break
+        accum += points[target].distance_to(points[next_idx])
+        target = next_idx
+        if accum >= desired:
+            break
+    if target == start and start + 1 < len(points):
+        next_mode = _motion_segment_mode(motions[min(start + 1, len(motions) - 1)], current_gear)
+        if next_mode == mode:
+            return start + 1
+    return target
+
+
+def _path_frame_error(pose: core.Pose2D, target: core.Pose2D, heading: float) -> tuple[float, float]:
+    dx = target.x - pose.x
+    dy = target.y - pose.y
+    c = math.cos(heading)
+    s = math.sin(heading)
+    along = c * dx + s * dy
+    cross = -s * dx + c * dy
+    return along, cross
 
 
 def cmd_hybrid_autorun(args: argparse.Namespace) -> int:
@@ -991,12 +1414,16 @@ def cmd_hybrid_autorun(args: argparse.Namespace) -> int:
         if projection.enabled and abs(projection.anchor_roll_rad) < 1e-9 and abs(projection.anchor_pitch_rad) < 1e-9:
             projection = core.anchor_projection_to_pose(projection, pose_raw)
         pose = core.project_pose_to_ground(pose_raw, projection)
+        linerun_config = _load_linerun_gui_config()
         if use_local_guidance:
-            linerun_proc = LineRunProcess(args, line_log)
+            linerun_proc = LineRunProcess(args, line_log, linerun_config)
             linerun_proc.start()
             core.log(f"linerun subprocess started. Raw log: {line_log}")
             ros_bridge = LineRunRosBridge(args.ros_cmd_vel_topic, args.ros_status_topic, args.ros_drive_mode_topic)
-            time.sleep(1.0)
+            if linerun_config:
+                core.log(f"Hybrid autorun uses linerun GUI config: {LINERUN_GUI_CONFIG}")
+            if not _wait_for_linerun_ready(ros_bridge, args, linerun_config=linerun_config):
+                core.log("linerun local guidance was not ready before replay; hybrid will keep waiting instead of using global when global weight is 0.")
         else:
             core.log("Hybrid autorun local weight is 0. linerun is disabled; running pure global replay.")
         if used_fallback:
@@ -1027,30 +1454,69 @@ def cmd_hybrid_autorun(args: argparse.Namespace) -> int:
                     send_state.reset_motion()
                     core.log("Remote controller took over. Hybrid autorun paused and progress is preserved.")
                 if ros_bridge is not None:
+                    cruise_vx, offset_px, direction_angle_deg = _linerun_drive_settings(linerun_config, reverse=False, args=args)
                     ros_bridge.publish_mode(
                         enable=False,
                         reverse=False,
-                        cruise_vx=args.line_cruise_vx,
+                        cruise_vx=cruise_vx,
                         gear="4t4d",
                         low_beam=args.line_low_beam,
-                        target_center_offset_px=args.line_target_center_offset_px,
-                        vehicle_direction_angle_deg=args.line_vehicle_direction_angle_deg,
+                        target_center_offset_px=offset_px,
+                        vehicle_direction_angle_deg=direction_angle_deg,
                     )
                 time.sleep(0.10)
                 continue
             if send_state.remote_paused:
                 send_state.remote_paused = False
                 send_state.reset_motion()
-                nearest_resume = core._find_tracking_index(points, start_index, pose, window=24)
+                nearest_resume = _find_tracking_index_same_mode(
+                    points,
+                    motions,
+                    start_index,
+                    pose,
+                    current_gear,
+                    window=24,
+                )
                 start_index = max(start_index, nearest_resume)
                 current_gear = None
                 core.log(f"Remote controller released. Hybrid autorun resumed from nearest mission sample #{start_index}.")
 
-            nearest_index = core._find_tracking_index(points, start_index, pose, window=14)
-            start_index = max(start_index, nearest_index)
-            start_index = _advance_dense_tracking_index(points, motions, start_index, pose, current_gear)
+            crab_locked_active = send_state.crab_locked_until >= start_index and send_state.crab_target_index >= 0
+            if crab_locked_active:
+                nearest_index = start_index
+            else:
+                nearest_index = _find_tracking_index_same_mode(
+                    points,
+                    motions,
+                    start_index,
+                    pose,
+                    current_gear,
+                    window=18,
+                )
+                start_index = max(start_index, nearest_index)
             motion_here = motions[min(start_index, len(motions) - 1)]
+            crab_tail_release_index = _skip_crab_tail_index(motions, start_index)
+            if crab_tail_release_index > start_index:
+                start_index = crab_tail_release_index
+                current_gear = None
+                send_state.last_sent_gear = None
+                motion_here = motions[min(start_index, len(motions) - 1)]
             reversing_here = _safe_float(motion_here.get("vx"), 0.0) < -0.03
+            if reversing_here:
+                start_index = _advance_reverse_progress_index(points, motions, start_index, pose, current_gear)
+                motion_here = motions[min(start_index, len(motions) - 1)]
+                reversing_here = _safe_float(motion_here.get("vx"), 0.0) < -0.03
+            else:
+                upcoming_crab_for_progress = core._find_future_gear_start(motions, start_index, "crab", limit=20)
+                crab_is_near = (
+                    upcoming_crab_for_progress is not None
+                    and pose.distance_to(points[upcoming_crab_for_progress]) <= 0.45
+                )
+                if not crab_is_near:
+                    start_index = _advance_dense_tracking_index(points, motions, start_index, pose, current_gear)
+                    start_index = _advance_tracking_progress_index(points, motions, start_index, pose, current_gear)
+                    motion_here = motions[min(start_index, len(motions) - 1)]
+                    reversing_here = _safe_float(motion_here.get("vx"), 0.0) < -0.03
             if send_state.crab_locked_until >= start_index and send_state.crab_target_index >= 0:
                 gear = "crab"
                 target_index = core._select_crab_progress_target(
@@ -1064,17 +1530,27 @@ def cmd_hybrid_autorun(args: argparse.Namespace) -> int:
                     send_state.crab_locked_until = -1
                     send_state.crab_target_index = -1
                     gear = core._resolve_replay_gear(motion_here, current_gear)
-                    base_lookahead = 2 if gear == "crab" else (
-                        3 if reversing_here else (4 if abs(_safe_float(motion_here.get("wz"), 0.0)) < 10.0 else 3)
-                    )
-                    target_index = min(len(points) - 1, start_index + base_lookahead)
+                    if reversing_here:
+                        target_index = _select_reverse_target_index(points, motions, start_index, current_gear)
+                    else:
+                        target_index = _select_lookahead_target_index(
+                            points,
+                            motions,
+                            start_index,
+                            current_gear,
+                        )
                     target = points[target_index]
                     motion = motions[target_index]
             else:
-                base_lookahead = 2 if core._resolve_replay_gear(motion_here, current_gear) == "crab" else (
-                    3 if reversing_here else (4 if abs(_safe_float(motion_here.get("wz"), 0.0)) < 10.0 else 3)
-                )
-                target_index = min(len(points) - 1, start_index + base_lookahead)
+                if reversing_here:
+                    target_index = _select_reverse_target_index(points, motions, start_index, current_gear)
+                else:
+                    target_index = _select_lookahead_target_index(
+                        points,
+                        motions,
+                        start_index,
+                        current_gear,
+                    )
                 target = points[target_index]
                 motion = motions[target_index]
                 gear = core._resolve_replay_gear(motion, current_gear)
@@ -1096,18 +1572,21 @@ def cmd_hybrid_autorun(args: argparse.Namespace) -> int:
                         target = points[target_index]
                         motion = motions[target_index]
                         gear = "crab"
+            dist = pose.distance_to(target)
             row_switch_mode = gear == "crab" or abs(_safe_float(motion.get("vy"), 0.0)) > 0.05
             reversing_mode = gear == "reverse" or _safe_float(motion.get("vx"), 0.0) < -0.03
-            upcoming_row_switch_index = None if row_switch_mode else _find_next_maneuver_index(motions, start_index + 1)
+            tracking_heading = core._tracking_heading(points, motions, target_index, gear)
+            upcoming_row_switch_index = None if row_switch_mode else _find_next_row_switch_index(motions, start_index + 1)
             dist_to_row_switch = None
             if upcoming_row_switch_index is not None:
                 dist_to_row_switch = pose.distance_to(points[upcoming_row_switch_index])
             next_reverse_index = None if reversing_mode else _find_next_reverse_index(motions, start_index + 1)
             dist_to_reverse_start = None
+            next_reverse_start_index = None
             if next_reverse_index is not None:
-                reverse_start_index = _find_reverse_segment_start(motions, next_reverse_index)
-                if reverse_start_index is not None:
-                    dist_to_reverse_start = pose.distance_to(points[reverse_start_index])
+                next_reverse_start_index = _find_reverse_segment_start(motions, next_reverse_index)
+                if next_reverse_start_index is not None:
+                    dist_to_reverse_start = pose.distance_to(points[next_reverse_start_index])
             dist_since_reverse_start = None
             if reversing_mode:
                 reverse_start_index = _find_reverse_segment_start(motions, start_index)
@@ -1120,6 +1599,21 @@ def cmd_hybrid_autorun(args: argparse.Namespace) -> int:
                 current_gear = gear
 
             if gear == "crab":
+                if (
+                    send_state.crab_locked_until >= 0
+                    and target_index <= start_index
+                    and start_index >= send_state.crab_locked_until
+                    and dist < 0.20
+                ):
+                    send_state.crab_locked_until = -1
+                    send_state.crab_target_index = -1
+                    send_state.crab_best_dist = float("inf")
+                    send_state.crab_diverge_count = 0
+                    start_index = min(len(points) - 1, start_index + 1)
+                    current_gear = None
+                    send_state.last_sent_gear = None
+                    core.log(f"Hybrid autorun crab segment finished at sample #{start_index - 1}. Returning to 4t4d tracking.")
+                    continue
                 if dist + 0.03 < send_state.crab_best_dist:
                     send_state.crab_best_dist = dist
                     send_state.crab_diverge_count = 0
@@ -1136,6 +1630,7 @@ def cmd_hybrid_autorun(args: argparse.Namespace) -> int:
                     send_state.crab_target_index = -1
                     send_state.crab_best_dist = float("inf")
                     send_state.crab_diverge_count = 0
+                    start_index = _skip_crab_tail_index(motions, start_index)
                     current_gear = None
                     send_state.last_sent_gear = None
                     continue
@@ -1151,6 +1646,8 @@ def cmd_hybrid_autorun(args: argparse.Namespace) -> int:
                             send_state.crab_target_index = -1
                             send_state.crab_best_dist = float("inf")
                             send_state.crab_diverge_count = 0
+                            current_gear = None
+                            send_state.last_sent_gear = None
                         continue
                 else:
                     if core._axis_progress_reached(pose.x, target.x, axis_dx, 0.10):
@@ -1160,6 +1657,8 @@ def cmd_hybrid_autorun(args: argparse.Namespace) -> int:
                             send_state.crab_target_index = -1
                             send_state.crab_best_dist = float("inf")
                             send_state.crab_diverge_count = 0
+                            current_gear = None
+                            send_state.last_sent_gear = None
                         continue
                 if near_finish and dist < 0.10:
                     core._hold_current_gear_stop(controller, send_state, current_gear)
@@ -1169,14 +1668,33 @@ def cmd_hybrid_autorun(args: argparse.Namespace) -> int:
                 dist = pose.distance_to(target)
                 tracking_heading = core._tracking_heading(points, motions, target_index, gear)
                 yaw_err = core.normalize_angle(tracking_heading - pose.yaw)
-                if dist < 0.12 and abs(math.degrees(yaw_err)) < 12.0:
+                path_along_err, path_cross_err = _path_frame_error(pose, target, tracking_heading)
+                passed_target = (not reversing_mode) and path_along_err < -0.03 and abs(path_cross_err) < 0.12
+                reverse_passed_target = reversing_mode and path_along_err > 0.03 and abs(path_cross_err) < 0.16
+                reverse_reached_target = reversing_mode and dist < 0.16
+                if (
+                    (not reversing_mode and dist < 0.12 and abs(math.degrees(yaw_err)) < 12.0)
+                    or passed_target
+                    or reverse_passed_target
+                    or reverse_reached_target
+                ):
                     send_state.crab_best_dist = float("inf")
                     send_state.crab_diverge_count = 0
-                    start_index = min(len(points) - 1, target_index + 1)
+                    if reversing_mode:
+                        start_index = min(len(points) - 1, max(start_index + 1, min(target_index, start_index + 6)))
+                    else:
+                        start_index = min(len(points) - 1, target_index + 1)
                     continue
                 _, lateral_err = core._body_frame_error(pose, target)
-                if abs(lateral_err) > 0.07:
-                    protected_target_index = min(len(points) - 1, start_index + 2)
+                if (not reversing_mode) and abs(lateral_err) > 0.07:
+                    protected_target_index = _select_lookahead_target_index(
+                        points,
+                        motions,
+                        start_index,
+                        current_gear,
+                        lookahead_m=0.14,
+                        max_span=12,
+                    )
                     if protected_target_index != target_index:
                         target_index = protected_target_index
                         target = points[target_index]
@@ -1186,14 +1704,24 @@ def cmd_hybrid_autorun(args: argparse.Namespace) -> int:
                         yaw_err = core.normalize_angle(tracking_heading - pose.yaw)
                         dist = pose.distance_to(target)
 
+            command_motion = motion
+            if gear == "crab" and abs(_safe_float(command_motion.get("vy"), 0.0)) < 0.03:
+                crab_vy = _crab_reference_vy(points, pose, motions, start_index, target_index, send_state)
+                if abs(crab_vy) >= 0.03:
+                    command_motion = dict(motion)
+                    command_motion["vy"] = crab_vy
+
             g_vx, g_vy, g_wz, dist, heading_err_deg = _compute_global_command(
                 pose,
                 target,
-                motion,
+                command_motion,
                 gear,
                 send_state,
                 tracking_heading,
             )
+            if reversing_mode:
+                reverse_turn_scale, reverse_turn_cap = _reverse_entry_turn_scale(dist_since_reverse_start)
+                g_wz = core._clamp(g_wz * reverse_turn_scale, -reverse_turn_cap, reverse_turn_cap)
             if near_finish and dist < 0.10:
                 core._hold_current_gear_stop(controller, send_state, current_gear)
                 core.log(f"Hybrid autorun reached final area near mission end (dist={dist:.2f}). Stopping without final alignment.")
@@ -1202,14 +1730,19 @@ def cmd_hybrid_autorun(args: argparse.Namespace) -> int:
             local_enabled_by_weight = max(0.0, min(1.0, float(args.local_weight_in_row))) > 1e-6
             local_enable = (not row_switch_mode) and local_enabled_by_weight
             if ros_bridge is not None:
+                cruise_vx, offset_px, direction_angle_deg = _linerun_drive_settings(
+                    linerun_config,
+                    reverse=reversing_here,
+                    args=args,
+                )
                 ros_bridge.publish_mode(
                     enable=local_enable,
                     reverse=reversing_here,
-                    cruise_vx=args.line_cruise_vx,
+                    cruise_vx=cruise_vx,
                     gear="4t4d",
                     low_beam=args.line_low_beam,
-                    target_center_offset_px=args.line_target_center_offset_px,
-                    vehicle_direction_angle_deg=args.line_vehicle_direction_angle_deg,
+                    target_center_offset_px=offset_px,
+                    vehicle_direction_angle_deg=direction_angle_deg,
                 )
                 local_status = ros_bridge.status_snapshot()
                 local_cmd = ros_bridge.cmd_snapshot()
@@ -1217,7 +1750,20 @@ def cmd_hybrid_autorun(args: argparse.Namespace) -> int:
                 local_status = LineStatus()
                 local_cmd = TwistCommand()
 
-            global_weight, local_weight, mode_name = _compute_hybrid_weights(
+            if (
+                local_status.obstacle_blocked
+                and not reversing_mode
+                and next_reverse_start_index is not None
+                and dist_to_reverse_start is not None
+                and dist_to_reverse_start <= max(0.20, float(getattr(args, "row_switch_blend_start_dist", 3.0)))
+            ):
+                start_index = max(start_index + 1, next_reverse_start_index)
+                current_gear = None
+                send_state.last_sent_gear = None
+                core.log(f"Hybrid autorun row end detected by linerun. Switching to reverse mission sample #{start_index}.")
+                continue
+
+            global_weight, local_weight, mode_name, allow_stale_local_hold = _compute_hybrid_weights(
                 args=args,
                 row_switch_mode=row_switch_mode,
                 reversing_mode=reversing_mode,
@@ -1236,6 +1782,7 @@ def cmd_hybrid_autorun(args: argparse.Namespace) -> int:
                 local_status,
                 global_weight,
                 local_weight,
+                allow_stale_local_hold,
             )
             body_cmd.gear = gear
             if (
@@ -1245,6 +1792,13 @@ def cmd_hybrid_autorun(args: argparse.Namespace) -> int:
                 and target_index >= max(start_index + 1, send_state.crab_locked_until - 1)
             ):
                 start_index = min(len(points) - 1, target_index + 1)
+                if start_index > send_state.crab_locked_until:
+                    send_state.crab_locked_until = -1
+                    send_state.crab_target_index = -1
+                    send_state.crab_best_dist = float("inf")
+                    send_state.crab_diverge_count = 0
+                    current_gear = None
+                    send_state.last_sent_gear = None
                 continue
             body_cmd.vx, body_cmd.vy, body_cmd.wz = core._smooth_drive_command(
                 send_state,
@@ -1302,14 +1856,15 @@ def cmd_hybrid_autorun(args: argparse.Namespace) -> int:
     finally:
         try:
             if ros_bridge is not None:
+                cruise_vx, offset_px, direction_angle_deg = _linerun_drive_settings(linerun_config, reverse=False, args=args)
                 ros_bridge.publish_mode(
                     enable=False,
                     reverse=False,
-                    cruise_vx=args.line_cruise_vx,
+                    cruise_vx=cruise_vx,
                     gear="4t4d",
                     low_beam=args.line_low_beam,
-                    target_center_offset_px=args.line_target_center_offset_px,
-                    vehicle_direction_angle_deg=args.line_vehicle_direction_angle_deg,
+                    target_center_offset_px=offset_px,
+                    vehicle_direction_angle_deg=direction_angle_deg,
                 )
         except Exception:
             pass
