@@ -796,6 +796,7 @@ class MainWindow:
         self.camera_devices = list_v4l2_devices()
         self.camera_caps: dict[str, dict[str, list[str]]] = {}
         self.mapping_name_var = tk.StringVar(value=generated_name("map"))
+        self.mapping_recorddata_var = tk.BooleanVar(value=False)
         self.record_name_var = tk.StringVar(value=generated_name("mission"))
         self.line_model_var = tk.StringVar(value="/root/ugv/line/models/your_model.rknn")
         self.line_source_var = tk.StringVar(value="/dev/video0")
@@ -878,6 +879,7 @@ class MainWindow:
         self.local_weight_in_row_var.set(str(data.get("local_weight_in_row", self.local_weight_in_row_var.get())))
         self.global_weight_in_row_var.set(str(data.get("global_weight_in_row", self.global_weight_in_row_var.get())))
         self.line_require_npu_var.set(bool(data.get("line_require_npu", self.line_require_npu_var.get())))
+        self.mapping_recorddata_var.set(bool(data.get("mapping_recorddata", self.mapping_recorddata_var.get())))
 
     def _save_settings(self) -> None:
         data = {
@@ -906,6 +908,7 @@ class MainWindow:
             "local_weight_in_row": self.local_weight_in_row_var.get().strip() or "0.75",
             "global_weight_in_row": self.global_weight_in_row_var.get().strip() or "0.25",
             "line_require_npu": bool(self.line_require_npu_var.get()),
+            "mapping_recorddata": bool(self.mapping_recorddata_var.get()),
         }
         try:
             SETTINGS_PATH.write_text(json.dumps(data, ensure_ascii=True, indent=2), encoding="utf-8")
@@ -1056,14 +1059,23 @@ class MainWindow:
         self.map_combo_mapping = ttk.Combobox(group, state="readonly", width=60)
         self.map_combo_mapping.grid(row=1, column=1, sticky="ew", pady=8)
 
+        ttk.Checkbutton(
+            group,
+            text="Enable MindCloud recorddata during mapping",
+            variable=self.mapping_recorddata_var,
+        ).grid(row=2, column=0, columnspan=2, sticky="w", pady=(2, 4))
+
         btn_row = ttk.Frame(group)
-        btn_row.grid(row=2, column=0, columnspan=2, sticky="w", pady=(10, 0))
+        btn_row.grid(row=3, column=0, columnspan=2, sticky="w", pady=(10, 0))
         ttk.Button(btn_row, text="Refresh Maps", command=self._refresh_maps).pack(side=tk.LEFT)
         ttk.Button(btn_row, text="Delete Selected Map", command=self._delete_selected_map).pack(side=tk.LEFT, padx=8)
         ttk.Button(btn_row, text="Start Mapping", command=self._start_mapping).pack(side=tk.LEFT)
 
         group.columnconfigure(1, weight=1)
-        ttk.Label(tab, text="Odin map files are saved as .bin files.").pack(anchor="w", pady=(12, 0))
+        ttk.Label(
+            tab,
+            text="Odin map files are saved as .bin files. When MindCloud recorddata is enabled, mapping stop will save the map and then turn recorddata off.",
+        ).pack(anchor="w", pady=(12, 0))
         return tab
 
     def _build_record_tab(self) -> ttk.Frame:
@@ -1666,7 +1678,11 @@ class MainWindow:
             self._set_localization_status("Interrupted by Mapping")
             active.stop()
         self._start_uvc_preview_publisher(auto=True)
-        self._start_task("Mapping", ["map", "--map-name", map_name, "--viz", "off"])
+        args = ["map", "--map-name", map_name, "--viz", "off"]
+        if self.mapping_recorddata_var.get():
+            self._log("Mapping will also enable MindCloud recorddata. When mapping stops, recorddata will be turned off explicitly.")
+            args.append("--recorddata")
+        self._start_task("Mapping", args)
 
     def _start_recording(self) -> None:
         map_path = self._selected_map_path(self.map_combo_record)

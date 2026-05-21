@@ -152,10 +152,11 @@ def _ensure_shadow_workspace_built() -> None:
     core.log(f"Patched shadow odin_ros_driver built successfully. Build log: {build_log}")
 
 
-def write_odin_config(mode: int, *, map_path: Path | None = None, map_name: str = "") -> Path:
+def write_odin_config(mode: int, *, map_path: Path | None = None, map_name: str = "", recorddata: bool = False) -> Path:
     sync_shadow_package()
     text = SHADOW_ODIN_CONFIG.read_text(encoding="utf-8")
     text = _replace_yaml_scalar(text, "custom_map_mode", str(mode))
+    text = _replace_yaml_scalar(text, "recorddata", "1" if recorddata else "0")
     text = _replace_yaml_scalar(text, "use_host_ros_time", "2")
     text = _replace_yaml_scalar(text, "sendimu", "1")
     text = _replace_yaml_scalar(text, "enable_imu_smooth", "1")
@@ -179,6 +180,14 @@ def write_odin_config(mode: int, *, map_path: Path | None = None, map_name: str 
     temp_path = TEMP_CONFIG_DIR / f"odin_mode_{mode}_{int(time.time() * 1000)}.yaml"
     temp_path.write_text(text, encoding="utf-8")
     return temp_path
+
+
+def set_shadow_recorddata(enabled: bool) -> None:
+    sync_shadow_package()
+    text = SHADOW_ODIN_CONFIG.read_text(encoding="utf-8")
+    text = _replace_yaml_scalar(text, "recorddata", "1" if enabled else "0")
+    SHADOW_ODIN_CONFIG.write_text(text, encoding="utf-8")
+    core.log(f"Shadow Odin recorddata set to {'1' if enabled else '0'}.")
 
 
 def request_map_save(target_file: Path, timeout_sec: float = 25.0, raw_log: Path | None = None) -> bool:
@@ -343,12 +352,15 @@ core.LocalizationSession = LocalizationSession
 def cmd_map(args: argparse.Namespace) -> int:
     map_name = args.map_name or core.generated_name("map")
     log_path = LOG_DIR / f"mapping_{time.strftime('%Y%m%d_%H%M%S')}.log"
-    config_path = write_odin_config(1, map_name=map_name)
+    recorddata = bool(getattr(args, "recorddata", False))
+    config_path = write_odin_config(1, map_name=map_name, recorddata=recorddata)
     override = OdinConfigOverride(config_path)
     proc = OdinLaunchProcess(config_path, log_path)
     target_file = PROJECT_ROOT / "maps" / map_name / f"{map_name}.bin"
     core.log(f"Starting Odin SLAM session: {map_name}")
     core.log(f"Target map file: {target_file}")
+    if recorddata:
+        core.log("MindCloud recorddata capture enabled for this mapping session.")
     cleanup_stale_odin_processes()
     override.apply()
     proc.start()
@@ -368,6 +380,11 @@ def cmd_map(args: argparse.Namespace) -> int:
         return 0
     finally:
         proc.stop()
+        try:
+            set_shadow_recorddata(False)
+            core.log("MindCloud recorddata capture disabled after mapping stop.")
+        except Exception as exc:
+            core.log(f"Warning: failed to force recorddata back to 0: {exc}")
         override.restore()
         config_path.unlink(missing_ok=True)
 
@@ -864,6 +881,48 @@ def _find_tracking_index_same_mode(
     return best_any_index
 
 
+def _advance_dense_tracking_index(
+    points: list[core.Pose2D],
+    motions: list[dict[str, Any]],
+    current_index: int,
+    pose: core.Pose2D,
+    current_gear: str | None,
+    *,
+    max_skip: int = 6,
+) -> int:
+    if not points:
+        return 0
+    idx = max(0, min(current_index, len(points) - 1))
+    mode = _motion_segment_mode(motions[min(idx, len(motions) - 1)], current_gear)
+    skipped = 0
+    while idx + 1 < len(points) and skipped < max_skip:
+        next_idx = idx + 1
+        next_mode = _motion_segment_mode(motions[min(next_idx, len(motions) - 1)], current_gear)
+        if next_mode != mode:
+            break
+        spacing = points[idx].distance_to(points[next_idx])
+        motion = motions[min(idx, len(motions) - 1)]
+        vx = abs(_safe_float(motion.get("vx"), 0.0))
+        vy = abs(_safe_float(motion.get("vy"), 0.0))
+        wz = abs(_safe_float(motion.get("wz"), 0.0))
+        low_motion = max(vx, vy) < 0.05 and wz < 6.0
+        cur_dist = pose.distance_to(points[idx])
+        next_dist = pose.distance_to(points[next_idx])
+        # When recording very slowly, neighboring mission samples can be so dense
+        # that replay keeps targeting points the chassis has effectively already
+        # passed. Prefer the next sample if it is almost coincident and not farther.
+        if spacing <= 0.035 and low_motion and next_dist <= cur_dist + 0.02:
+            idx = next_idx
+            skipped += 1
+            continue
+        if cur_dist <= 0.08 and next_dist <= 0.14 and next_dist <= cur_dist + 0.03:
+            idx = next_idx
+            skipped += 1
+            continue
+        break
+    return idx
+
+
 def cmd_hybrid_autorun(args: argparse.Namespace) -> int:
     core.ensure_can_ready(args.channel, args.bitrate)
     mission = json.loads(Path(args.mission).read_text(encoding="utf-8"))
@@ -989,6 +1048,7 @@ def cmd_hybrid_autorun(args: argparse.Namespace) -> int:
 
             nearest_index = core._find_tracking_index(points, start_index, pose, window=14)
             start_index = max(start_index, nearest_index)
+            start_index = _advance_dense_tracking_index(points, motions, start_index, pose, current_gear)
             motion_here = motions[min(start_index, len(motions) - 1)]
             reversing_here = _safe_float(motion_here.get("vx"), 0.0) < -0.03
             if send_state.crab_locked_until >= start_index and send_state.crab_target_index >= 0:
@@ -1326,6 +1386,7 @@ def build_parser() -> argparse.ArgumentParser:
     map_p = sub.add_parser("map", help="Start Odin SLAM mapping and save a .bin map")
     map_p.add_argument("--map-name", default="")
     map_p.add_argument("--viz", choices=["on", "off"], default="off")
+    map_p.add_argument("--recorddata", action="store_true", help="Enable MindCloud-compatible recorddata during mapping")
     map_p.set_defaults(func=cmd_map)
 
     loc_p = sub.add_parser("localization", help="Run Odin relocalization only")

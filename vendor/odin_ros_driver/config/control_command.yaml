@@ -76,7 +76,7 @@ register_keys:
   # record rgb, odometry, and slam cloud data as proprietary olx format for further processing in MindCloud(TM) software. 
   # save path: ws/src/odin_ros_driver/recorddata/{record_start_time}/
   # ATTENTION: please copy the full folder for post-processing.
-  recorddata: 0           # 0: off; 1: on
+  recorddata: 0
 
   # Save device runtime status info to ws/src/odin_ros_driver/log/Driver_{drvier_start_time}/Conn_{device_connection_time}/dev_status.csv
   devstatuslog: 1         # 0: off; 1: on.
@@ -91,7 +91,7 @@ register_keys:
   
   custom_map_mode: 2
   custom_init_pos: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]
-  relocalization_map_abs_path: "/root/ugv/autorun_final/maps/map_20260429_193924/map_20260429_193924.bin"
+  relocalization_map_abs_path: "/root/ugv/autorun_final/maps/map_20260521_093906/map_20260521_093906.bin"
 
   # To get the mapping result file, please use the set_param.sh script provided: "./set_param.sh save_map 1"
   mapping_result_dest_dir: ""
