@@ -105,6 +105,7 @@ class MotionSendState:
     unlock_confirmed_until: float = 0.0
     motion_unlocked_session: bool = False
     unlock_force_started_at: float = 0.0
+    last_unlock_pulse_ts: float = 0.0
     last_vx: float = 0.0
     last_vy: float = 0.0
     last_wz: float = 0.0
@@ -140,6 +141,7 @@ class MotionSendState:
         self.unlock_confirmed_until = 0.0
         self.motion_unlocked_session = False
         self.unlock_force_started_at = 0.0
+        self.last_unlock_pulse_ts = 0.0
         self.last_vx = 0.0
         self.last_vy = 0.0
         self.last_wz = 0.0
@@ -1141,6 +1143,7 @@ def _send_drive(
         state.unlock_confirmed_until = now + 2.0
         state.motion_unlocked_session = True
         state.unlock_request_active = False
+        state.unlock_force_started_at = 0.0
     effective_unlock_ok = state.motion_unlocked_session or reported_unlock_ok or now < state.unlock_confirmed_until
     waiting_unlock = motion_active and not effective_unlock_ok
     if motion_active and state.motion_unlock_armed:
@@ -1148,11 +1151,14 @@ def _send_drive(
         state.queue_unlock_sequence()
         state.motion_unlock_armed = False
         state.unlock_force_started_at = now
+        state.last_unlock_pulse_ts = now
     elif state.unlock_request_active and not effective_unlock_ok and not state.unlock_sequence:
         state.queue_unlock_sequence()
+        state.last_unlock_pulse_ts = now
     elif not motion_active:
         state.motion_unlock_armed = True
         state.unlock_force_started_at = 0.0
+        state.last_unlock_pulse_ts = 0.0
 
     # Some chassis do not report unlock_ok reliably, but they still accept motion
     # after unlock has been asserted for a short while. Mirror the practical
@@ -1164,6 +1170,12 @@ def _send_drive(
             effective_unlock_ok = True
             waiting_unlock = False
             state.motion_unlocked_session = True
+
+    if motion_active and not state.unlock_sequence and now - state.last_unlock_pulse_ts >= 0.8:
+        # FW-mini can drift back to a non-driving state unless unlock is
+        # reasserted periodically while motion commands are active.
+        state.queue_unlock_sequence()
+        state.last_unlock_pulse_ts = now
 
     body_vx, body_vy, body_wz = vx, vy, wz
     if gear == 'crab':
@@ -1186,10 +1198,21 @@ def _send_drive(
         if gear != '4t4d':
             controller.send_steering(SteeringCommand(gear=gear, speed=0.0, angle=0.0))
     unlock_now = state.unlock_sequence.pop(0) if state.unlock_sequence else False
+    if motion_active and gear in {'4t4d', 'crab'}:
+        # Match the stable line-runner path: keep unlock asserted while
+        # actively commanding motion so the chassis does not hold vx at zero.
+        unlock_now = True
     force_io_send = unlock_now or bool(state.unlock_sequence)
     io_cmd = IOCommand(light_mode='auto', unlock=unlock_now)
     if io_cmd.active() or force_io_send:
         controller.send_io(io_cmd)
+    if motion_active and now - state.last_cmd_at >= 1.0:
+        log(
+            f"send gear={gear} vx={body_vx:+.3f} vy={body_vy:+.3f} "
+            f"wz={body_wz:+.2f} unlock={unlock_now} "
+            f"fb_unlock={reported_unlock_ok} steer_sync={str(snapshot.get('steering', {}).get('gear', '-'))}"
+        )
+        state.last_cmd_at = now
     return waiting_unlock, unlock_now, body_vx, body_vy, body_wz
 
 

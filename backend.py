@@ -46,6 +46,7 @@ SHADOW_COLCON_WS = RUNTIME_DIR / "shadow_ros2_ws"
 SHADOW_COLCON_SRC = SHADOW_COLCON_WS / "src"
 SHADOW_COLCON_INSTALL = SHADOW_COLCON_WS / "install" / "setup.bash"
 SHADOW_HOST_SDK_BIN = SHADOW_COLCON_WS / "install" / "lib" / "odin_ros_driver" / "host_sdk_sample"
+SHADOW_HOST_SDK_BUILD_BIN = SHADOW_COLCON_WS / "build" / "odin_ros_driver" / "host_sdk_sample"
 LINERUN_ROOT = ROOT / "linerun"
 LINERUN_PYTHON = Path("/opt/miniconda3/envs/py310/bin/python")
 LINERUN_GUI_CONFIG = LINERUN_ROOT / "plant_row_gui_config.json"
@@ -131,6 +132,25 @@ def _shadow_package_mtime() -> float:
     return latest
 
 
+def _valid_shadow_binary(path: Path) -> bool:
+    try:
+        return path.exists() and path.is_file() and path.stat().st_size > 0
+    except OSError:
+        return False
+
+
+def _repair_shadow_host_sdk_install() -> bool:
+    if not _valid_shadow_binary(SHADOW_HOST_SDK_BUILD_BIN):
+        return False
+    SHADOW_HOST_SDK_BIN.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(SHADOW_HOST_SDK_BUILD_BIN, SHADOW_HOST_SDK_BIN)
+    try:
+        SHADOW_HOST_SDK_BIN.chmod(0o755)
+    except OSError:
+        pass
+    return _valid_shadow_binary(SHADOW_HOST_SDK_BIN)
+
+
 def _ensure_shadow_workspace_built() -> None:
     package_link = SHADOW_COLCON_SRC / "odin_ros_driver"
     if package_link.is_symlink():
@@ -145,9 +165,15 @@ def _ensure_shadow_workspace_built() -> None:
         package_link.symlink_to(SHADOW_ODIN_ROOT, target_is_directory=True)
 
     source_mtime = _shadow_package_mtime()
-    binary_mtime = SHADOW_HOST_SDK_BIN.stat().st_mtime if SHADOW_HOST_SDK_BIN.exists() else 0.0
-    if SHADOW_HOST_SDK_BIN.exists() and binary_mtime >= source_mtime:
+    binary_mtime = SHADOW_HOST_SDK_BIN.stat().st_mtime if _valid_shadow_binary(SHADOW_HOST_SDK_BIN) else 0.0
+    if _valid_shadow_binary(SHADOW_HOST_SDK_BIN) and binary_mtime >= source_mtime:
         return
+
+    if _repair_shadow_host_sdk_install():
+        repaired_mtime = SHADOW_HOST_SDK_BIN.stat().st_mtime
+        if repaired_mtime >= source_mtime:
+            core.log(f"Repaired empty shadow host_sdk_sample install from build artifact: {SHADOW_HOST_SDK_BIN}")
+            return
 
     build_log = LOG_DIR / f"shadow_build_{time.strftime('%Y%m%d_%H%M%S')}.log"
     core.log("Building patched shadow odin_ros_driver workspace...")
@@ -168,8 +194,15 @@ def _ensure_shadow_workspace_built() -> None:
         text=True,
     )
     build_log.write_text(result.stdout or "", encoding="utf-8")
-    if result.returncode != 0 or not SHADOW_HOST_SDK_BIN.exists():
+    if result.returncode != 0:
         raise RuntimeError(f"Failed to build patched shadow odin_ros_driver. See {build_log}")
+    if not _valid_shadow_binary(SHADOW_HOST_SDK_BIN):
+        if not _repair_shadow_host_sdk_install():
+            raise RuntimeError(
+                "Shadow odin_ros_driver build finished but host_sdk_sample install is invalid. "
+                f"See {build_log}"
+            )
+        core.log(f"Shadow host_sdk_sample install repaired after build: {SHADOW_HOST_SDK_BIN}")
     core.log(f"Patched shadow odin_ros_driver built successfully. Build log: {build_log}")
 
 
@@ -178,9 +211,9 @@ def write_odin_config(mode: int, *, map_path: Path | None = None, map_name: str 
     text = SHADOW_ODIN_CONFIG.read_text(encoding="utf-8")
     text = _replace_yaml_scalar(text, "custom_map_mode", str(mode))
     text = _replace_yaml_scalar(text, "recorddata", "1" if recorddata else "0")
-    text = _replace_yaml_scalar(text, "use_host_ros_time", "2")
+    text = _replace_yaml_scalar(text, "use_host_ros_time", "0")
     text = _replace_yaml_scalar(text, "sendimu", "1")
-    text = _replace_yaml_scalar(text, "enable_imu_smooth", "1")
+    text = _replace_yaml_scalar(text, "enable_imu_smooth", "0")
     text = _replace_yaml_scalar(text, "imu_smooth_frequency", "400")
     text = _replace_yaml_scalar(text, "showpath", "1")
     text = _replace_yaml_scalar(text, "showcamerapose", "1")
@@ -737,13 +770,13 @@ def _linear_blend_amount(value: float, start: float, end: float) -> float:
 
 def _reverse_entry_turn_scale(dist_since_reverse_start: float | None) -> tuple[float, float]:
     if dist_since_reverse_start is None:
-        return 1.0, 1.2
+        return 1.0, 8.0
     dist = max(0.0, float(dist_since_reverse_start))
     if dist >= 0.9:
-        return 1.0, 1.2
+        return 1.0, 8.0
     amount = dist / 0.9
-    scale = 0.25 + 0.75 * amount
-    max_wz = 0.35 + 0.85 * amount
+    scale = 0.65 + 0.35 * amount
+    max_wz = 3.5 + 4.5 * amount
     return scale, max_wz
 
 
@@ -1026,10 +1059,14 @@ def _compute_global_command(
         cmd_wz = core._clamp(heading_err_deg * 0.50, -6.0, 6.0)
     else:
         cmd_vx = core._clamp(cmd_vx, -0.16, 0.16)
+        reversing = _safe_float(motion.get("vx"), 0.0) < -0.03
+        heading_gain = 0.95 if reversing else 0.72
+        lateral_gain = 28.0 if reversing else 18.0
+        wz_limit = min(wz_cap, 16.0 if reversing else 12.0)
         cmd_wz = core._clamp(
-            heading_err_deg * 0.72 + lateral_err * 18.0,
-            -min(wz_cap, 12.0),
-            min(wz_cap, 12.0),
+            heading_err_deg * heading_gain + lateral_err * lateral_gain,
+            -wz_limit,
+            wz_limit,
         )
         if abs(heading_err_deg) > 45.0:
             cmd_vx = core._clamp(cmd_vx, -0.04, 0.04)
@@ -1291,8 +1328,8 @@ def _select_reverse_target_index(
     start_index: int,
     current_gear: str | None,
     *,
-    lookahead_m: float = 0.34,
-    max_span: int = 18,
+    lookahead_m: float = 0.30,
+    max_span: int = 16,
 ) -> int:
     if not points:
         return 0
@@ -1309,7 +1346,7 @@ def _select_reverse_target_index(
         target = next_idx
         if accum >= lookahead_m:
             break
-    return max(target, min(len(points) - 1, start + 2))
+    return max(target, min(len(points) - 1, start + 1))
 
 
 def _select_lookahead_target_index(
@@ -1331,6 +1368,8 @@ def _select_lookahead_target_index(
     desired = lookahead_m
     if desired is None:
         desired = _tracking_lookahead_distance(motion_here, core._resolve_replay_gear(motion_here, current_gear))
+    if mode == "forward" and start <= 3:
+        desired = max(float(desired), 0.30)
     for _ in range(max_span):
         if target + 1 >= len(points):
             break
@@ -1397,6 +1436,10 @@ def cmd_hybrid_autorun(args: argparse.Namespace) -> int:
     start_index = core._choose_start_index(points, motions)
     current_gear: str | None = None
     send_state = core.MotionSendState.create()
+    send_state.unlock_request_active = True
+    for _ in range(2):
+        send_state.queue_unlock_sequence()
+    core.log("Hybrid autorun queued startup unlock pulses.")
     session: LocalizationSession | None = None
     tracker: core.TFPoseTracker | None = None
     linerun_proc: LineRunProcess | None = None
@@ -1593,6 +1636,14 @@ def cmd_hybrid_autorun(args: argparse.Namespace) -> int:
             dist_to_row_switch = None
             if upcoming_row_switch_index is not None:
                 dist_to_row_switch = pose.distance_to(points[upcoming_row_switch_index])
+            if reversing_mode and upcoming_row_switch_index is not None and dist_to_row_switch is not None and dist_to_row_switch <= 0.80:
+                start_index = max(start_index + 1, upcoming_row_switch_index)
+                current_gear = None
+                send_state.last_sent_gear = None
+                send_state.crab_best_dist = float("inf")
+                send_state.crab_diverge_count = 0
+                core.log(f"Hybrid autorun reverse-to-row-switch handoff at sample #{start_index}.")
+                continue
             next_reverse_index = None if reversing_mode else _find_next_reverse_index(motions, start_index + 1)
             dist_to_reverse_start = None
             next_reverse_start_index = None
@@ -1683,10 +1734,10 @@ def cmd_hybrid_autorun(args: argparse.Namespace) -> int:
                 yaw_err = core.normalize_angle(tracking_heading - pose.yaw)
                 path_along_err, path_cross_err = _path_frame_error(pose, target, tracking_heading)
                 passed_target = (not reversing_mode) and path_along_err < -0.03 and abs(path_cross_err) < 0.12
-                reverse_heading_ok = abs(math.degrees(yaw_err)) < 10.0
-                reverse_cross_ok = abs(path_cross_err) < 0.05
-                reverse_passed_target = reversing_mode and path_along_err > 0.03 and reverse_cross_ok and reverse_heading_ok
-                reverse_reached_target = reversing_mode and dist < 0.45 and reverse_cross_ok and reverse_heading_ok
+                reverse_heading_ok = abs(math.degrees(yaw_err)) < 20.0
+                reverse_cross_ok = abs(path_cross_err) < 0.10
+                reverse_passed_target = reversing_mode and path_along_err > 0.02 and reverse_cross_ok
+                reverse_reached_target = reversing_mode and dist < 0.55 and reverse_cross_ok and reverse_heading_ok
                 if (
                     (not reversing_mode and dist < 0.12 and abs(math.degrees(yaw_err)) < 12.0)
                     or passed_target
