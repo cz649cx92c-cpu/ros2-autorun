@@ -1250,7 +1250,7 @@ def _approach_start_point(
         snapshot = can_reader.snapshot()
         dist = pose.distance_to(target)
         yaw_err = normalize_angle(target.yaw - pose.yaw)
-        if dist < 0.15 or (dist < 0.10 and abs(math.degrees(yaw_err)) < 20.0):
+        if dist < 0.26 or (dist < 0.18 and abs(math.degrees(yaw_err)) < 30.0):
             log('Reached mission start point.')
             return
         if dist + 0.02 < best_dist:
@@ -1285,8 +1285,8 @@ def _approach_start_point(
         if vx_sign and last_vx_sign and vx_sign != last_vx_sign:
             flip_count += 1
         last_vx_sign = vx_sign or last_vx_sign
-        if stuck_count >= 12 and flip_count >= 3 and target_index + 2 < len(points):
-            target_index = min(len(points) - 1, target_index + 2)
+        if stuck_count >= 8 and flip_count >= 2 and target_index + 3 < len(points):
+            target_index = min(len(points) - 1, target_index + 3)
             target = points[target_index]
             best_dist = float('inf')
             stuck_count = 0

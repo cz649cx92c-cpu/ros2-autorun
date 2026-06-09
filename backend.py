@@ -1576,11 +1576,11 @@ def cmd_hybrid_autorun(args: argparse.Namespace) -> int:
                         crab_active = core._find_first_active_crab_index(motions, upcoming_crab, crab_end)
                         crab_active_end = core._find_last_active_crab_index(motions, crab_active, crab_end)
                         send_state.crab_locked_until = crab_active_end
-                        send_state.crab_target_index = crab_active
+                        send_state.crab_target_index = max(crab_active, crab_active_end - 1)
                         target_index = core._select_crab_progress_target(
                             start_index,
                             crab_active_end,
-                            crab_active,
+                            send_state.crab_target_index,
                         )
                         target = points[target_index]
                         motion = motions[target_index]
@@ -1683,8 +1683,10 @@ def cmd_hybrid_autorun(args: argparse.Namespace) -> int:
                 yaw_err = core.normalize_angle(tracking_heading - pose.yaw)
                 path_along_err, path_cross_err = _path_frame_error(pose, target, tracking_heading)
                 passed_target = (not reversing_mode) and path_along_err < -0.03 and abs(path_cross_err) < 0.12
-                reverse_passed_target = reversing_mode and path_along_err > 0.03 and abs(path_cross_err) < 0.16
-                reverse_reached_target = reversing_mode and dist < 0.16
+                reverse_heading_ok = abs(math.degrees(yaw_err)) < 10.0
+                reverse_cross_ok = abs(path_cross_err) < 0.05
+                reverse_passed_target = reversing_mode and path_along_err > 0.03 and reverse_cross_ok and reverse_heading_ok
+                reverse_reached_target = reversing_mode and dist < 0.45 and reverse_cross_ok and reverse_heading_ok
                 if (
                     (not reversing_mode and dist < 0.12 and abs(math.degrees(yaw_err)) < 12.0)
                     or passed_target
