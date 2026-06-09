@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -eo pipefail
 
-cd /root/ugv/autorun_final
-source /opt/ros/noetic/setup.bash
-source /root/catkin_ws/devel/setup.bash
+cd "$(dirname "$0")"
+export AMENT_TRACE_SETUP_FILES="${AMENT_TRACE_SETUP_FILES:-}"
+source /opt/ros/humble/setup.bash
 exec /usr/bin/python3 ./app.py "$@"

@@ -20,18 +20,20 @@ from typing import Any
 
 import cv2
 import numpy as np
-import rospy
+import rclpy
+from rclpy.executors import SingleThreadedExecutor
+from rclpy.node import Node
 from sensor_msgs.msg import CompressedImage as RosCompressedImage
 from sensor_msgs.msg import Image as RosImage
 from sensor_msgs.msg import PointCloud2 as RosPointCloud2
-from sensor_msgs import point_cloud2
+from sensor_msgs_py import point_cloud2
 from nav_msgs.msg import Odometry as RosOdometry
 from visualization_msgs.msg import MarkerArray
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 ROOT = PROJECT_ROOT.parent
 CONTROL_ROOT = ROOT / "control"
-ODIN_ROOT = Path("/root/catkin_ws/src/odin_ros_driver")
+DEFAULT_LINE_MODEL = ROOT / "line" / "models" / "best_from_input_152.rknn"
 MAPDATA_DIR = PROJECT_ROOT / "maps"
 MISSIONS_DIR = PROJECT_ROOT / "missions"
 MAIN_SCRIPT = PROJECT_ROOT / "main.py"
@@ -136,22 +138,55 @@ def sort_fps_text(values: list[str]) -> list[str]:
 
 
 def ros_master_is_ready(timeout_sec: float = 0.2) -> bool:
-    uri = os.environ.get("ROS_MASTER_URI", "http://localhost:11311")
-    try:
-        host_port = uri.split("://", 1)[1]
-        host, port_text = host_port.rsplit(":", 1)
-        port = int(port_text)
-        with socket.create_connection((host, port), timeout=timeout_sec):
-            return True
-    except Exception:
-        return False
+    del timeout_sec
+    return True
 
 
-def ensure_ros_monitor_node() -> None:
-    if not ros_master_is_ready():
-        raise RuntimeError("ROS master is not ready yet.")
-    if not rospy.core.is_initialized():
-        rospy.init_node(ROS_MONITOR_NODE_NAME, anonymous=True, disable_signals=True)
+class Ros2NodeThread:
+    _init_lock = threading.Lock()
+    _refcount = 0
+
+    def __init__(self, node_name: str) -> None:
+        os.environ.setdefault("ROS_HOME", "/tmp/autorun_final_ros2_home")
+        with self._init_lock:
+            if not rclpy.ok():
+                rclpy.init(args=None)
+            self.__class__._refcount += 1
+        self.node = Node(node_name)
+        self.executor = SingleThreadedExecutor()
+        self.executor.add_node(self.node)
+        self.thread = threading.Thread(target=self.executor.spin, name=f"{node_name}-spin", daemon=True)
+        self.thread.start()
+
+    def close(self) -> None:
+        try:
+            self.executor.shutdown()
+        except Exception:
+            pass
+        try:
+            self.executor.remove_node(self.node)
+        except Exception:
+            pass
+        try:
+            self.node.destroy_node()
+        except Exception:
+            pass
+        if self.thread.is_alive():
+            self.thread.join(timeout=1.0)
+        with self._init_lock:
+            self.__class__._refcount = max(0, self.__class__._refcount - 1)
+            if self.__class__._refcount == 0 and rclpy.ok():
+                rclpy.shutdown()
+
+
+_ROS_MONITOR_THREAD: Ros2NodeThread | None = None
+
+
+def ensure_ros_monitor_node() -> Ros2NodeThread:
+    global _ROS_MONITOR_THREAD
+    if _ROS_MONITOR_THREAD is None:
+        _ROS_MONITOR_THREAD = Ros2NodeThread(ROS_MONITOR_NODE_NAME)
+    return _ROS_MONITOR_THREAD
 
 
 def quat_to_rpy(qx: float, qy: float, qz: float, qw: float) -> tuple[float, float, float]:
@@ -358,6 +393,7 @@ class RosImageMonitor:
         self.sink = sink
         self.topics = topics
         self.running = False
+        self.subscriptions: list[Any] = []
         self.thread = threading.Thread(target=self._run, daemon=True)
         self.last_emit = 0.0
         self.has_frame = False
@@ -379,20 +415,22 @@ class RosImageMonitor:
 
     def _run(self) -> None:
         try:
-            while self.running:
-                try:
-                    ensure_ros_monitor_node()
-                    break
-                except RuntimeError:
-                    self.sink.put(("camera_status", "Waiting for ROS master"))
-                    time.sleep(0.5)
-            if not self.running:
-                return
+            ros_thread = ensure_ros_monitor_node()
             for topic in self.topics:
                 if topic.endswith("/compressed"):
-                    rospy.Subscriber(topic, RosCompressedImage, self._on_compressed_image, callback_args=topic, queue_size=1)
+                    self.subscriptions.append(ros_thread.node.create_subscription(
+                        RosCompressedImage,
+                        topic,
+                        lambda msg, t=topic: self._on_compressed_image(msg, t),
+                        1,
+                    ))
                 else:
-                    rospy.Subscriber(topic, RosImage, self._on_image, callback_args=topic, queue_size=1)
+                    self.subscriptions.append(ros_thread.node.create_subscription(
+                        RosImage,
+                        topic,
+                        lambda msg, t=topic: self._on_image(msg, t),
+                        1,
+                    ))
             self.sink.put(("log", f"{now_text()} Camera monitor subscribed to {', '.join(self.topics)}."))
             self.sink.put(("camera_status", "Subscribed"))
             while self.running:
@@ -462,6 +500,7 @@ class RosSceneMonitor:
     def __init__(self, sink: queue.Queue[tuple[str, Any]]) -> None:
         self.sink = sink
         self.running = False
+        self.subscriptions: list[Any] = []
         self.thread = threading.Thread(target=self._run, daemon=True)
         self.points: list[tuple[float, float, float]] = []
         self.path_points: list[tuple[float, float, float]] = []
@@ -482,26 +521,17 @@ class RosSceneMonitor:
 
     def _run(self) -> None:
         try:
-            while self.running:
-                try:
-                    ensure_ros_monitor_node()
-                    break
-                except RuntimeError:
-                    self.sink.put(("scene_status", "Waiting for ROS master"))
-                    time.sleep(0.5)
-            if not self.running:
-                return
-            published_topics = {name for name, _ in rospy.get_published_topics()}
-            if "/odin1/cloud_render" in published_topics:
-                self.cloud_topic = "/odin1/cloud_render"
-            elif "/odin1/cloud_slam" in published_topics:
-                self.cloud_topic = "/odin1/cloud_slam"
-            else:
-                self.cloud_topic = "/odin1/cloud_slam"
-            rospy.Subscriber(self.cloud_topic, RosPointCloud2, self._on_cloud, queue_size=1)
-            rospy.Subscriber("/odin1/path", MarkerArray, self._on_path, queue_size=1)
-            self.sink.put(("log", f"{now_text()} Scene monitor subscribed to {self.cloud_topic} and /odin1/path."))
-            self.sink.put(("scene_status", f"Streaming ({Path(self.cloud_topic).name})"))
+            ros_thread = ensure_ros_monitor_node()
+            for topic in ("/odin1/cloud_render", "/odin1/cloud_slam"):
+                self.subscriptions.append(ros_thread.node.create_subscription(
+                    RosPointCloud2,
+                    topic,
+                    lambda msg, t=topic: self._on_cloud(msg, t),
+                    1,
+                ))
+            self.subscriptions.append(ros_thread.node.create_subscription(MarkerArray, "/odin1/path", self._on_path, 1))
+            self.sink.put(("log", f"{now_text()} Scene monitor subscribed to /odin1/cloud_render, /odin1/cloud_slam and /odin1/path."))
+            self.sink.put(("scene_status", "Streaming"))
             while self.running:
                 now = time.monotonic()
                 if now - self.last_emit >= 1.4:
@@ -514,9 +544,10 @@ class RosSceneMonitor:
         finally:
             self.sink.put(("scene_status", "Stopped"))
 
-    def _on_cloud(self, msg: RosPointCloud2) -> None:
+    def _on_cloud(self, msg: RosPointCloud2, topic: str) -> None:
         if not self.running:
             return
+        self.cloud_topic = topic
         pts: list[tuple[float, float, float]] = []
         try:
             for idx, p in enumerate(point_cloud2.read_points(msg, field_names=("x", "y", "z"), skip_nans=True)):
@@ -549,6 +580,7 @@ class RosPoseDebugMonitor:
     def __init__(self, sink: queue.Queue[tuple[str, Any]]) -> None:
         self.sink = sink
         self.running = False
+        self.subscriptions: list[Any] = []
         self.thread = threading.Thread(target=self._run, daemon=True)
         self.last_emit = 0.0
 
@@ -561,15 +593,10 @@ class RosPoseDebugMonitor:
 
     def _run(self) -> None:
         try:
-            while self.running:
-                try:
-                    ensure_ros_monitor_node()
-                    break
-                except RuntimeError:
-                    time.sleep(0.5)
-            if not self.running:
-                return
-            rospy.Subscriber("/odin1/odometry_highfreq", RosOdometry, self._on_odom, queue_size=1)
+            ros_thread = ensure_ros_monitor_node()
+            self.subscriptions.append(
+                ros_thread.node.create_subscription(RosOdometry, "/odin1/odometry_highfreq", self._on_odom, 1)
+            )
             self.sink.put(("log", f"{now_text()} Pose debug monitor subscribed to /odin1/odometry_highfreq."))
             while self.running:
                 time.sleep(0.1)
@@ -798,7 +825,7 @@ class MainWindow:
         self.mapping_name_var = tk.StringVar(value=generated_name("map"))
         self.mapping_recorddata_var = tk.BooleanVar(value=False)
         self.record_name_var = tk.StringVar(value=generated_name("mission"))
-        self.line_model_var = tk.StringVar(value="/root/ugv/line/models/best_from_input_152.rknn")
+        self.line_model_var = tk.StringVar(value=str(DEFAULT_LINE_MODEL))
         self.line_source_var = tk.StringVar(value="/dev/video0")
         self.line_camera_fourcc_var = tk.StringVar(value="MJPG")
         self.line_resolution_var = tk.StringVar(value="1024x768")
@@ -1022,7 +1049,7 @@ class MainWindow:
 
         self.notebook.add(self._build_mapping_tab(), text="Mapping")
         self.notebook.add(self._build_record_tab(), text="Path Recording")
-        self.notebook.add(self._build_replay_tab(), text="Hybrid Autorun")
+        self.notebook.add(self._build_replay_tab(), text="Hybrid Drive")
         self.notebook.add(self._build_preview_tab(), text="Video Preview")
         self.notebook.add(self._build_status_tab(), text="Vehicle Status")
         self.notebook.bind("<<NotebookTabChanged>>", self._on_tab_changed)
@@ -1130,7 +1157,7 @@ class MainWindow:
         body = ttk.Frame(tab.inner, padding=16)
         body.pack(fill=tk.BOTH, expand=True)
 
-        group = ttk.LabelFrame(body, text="Hybrid Autorun", padding=14)
+        group = ttk.LabelFrame(body, text="Hybrid Drive", padding=14)
         group.pack(fill=tk.X)
 
         ttk.Label(group, text="Map File").grid(row=0, column=0, sticky="w", padx=(0, 10), pady=8)
@@ -1143,7 +1170,7 @@ class MainWindow:
         self.mission_combo.grid(row=1, column=1, sticky="ew", pady=8)
         self.mission_combo.bind("<<ComboboxSelected>>", lambda _event: self._update_route_preview())
 
-        ttk.Label(group, text="The system relocalizes first, starts linerun, then blends global mission replay with local row guidance.").grid(
+        ttk.Label(group, text="The system relocalizes first, starts linerun, then blends global mission tracking with local row guidance.").grid(
             row=2, column=0, columnspan=2, sticky="w", pady=8
         )
 
@@ -1188,7 +1215,7 @@ class MainWindow:
         ttk.Checkbutton(line_group, text="Require NPU (.rknn)", variable=self.line_require_npu_var).grid(
             row=5, column=0, columnspan=2, sticky="w", pady=(8, 0)
         )
-        ttk.Label(line_group, text="Use this page for row-following hybrid driving: linerun constrains in-row motion, global replay takes over during row switch / end-of-row / lost centerline.").grid(
+        ttk.Label(line_group, text="Use this page for row-following hybrid driving: linerun constrains in-row motion, global mission tracking takes over during row switch / end-of-row / lost centerline.").grid(
             row=6, column=0, columnspan=6, sticky="w", pady=(8, 0)
         )
         line_group.columnconfigure(1, weight=1)
@@ -1216,7 +1243,7 @@ class MainWindow:
         ttk.Button(btn_row, text="Delete Selected Mission", command=self._delete_selected_mission).pack(side=tk.LEFT)
         ttk.Button(btn_row, text="Start Localization", command=self._start_replay_localization).pack(side=tk.LEFT, padx=8)
         ttk.Button(btn_row, text="Stop Localization", command=self._stop_replay_localization).pack(side=tk.LEFT)
-        ttk.Button(btn_row, text="Start Hybrid Autorun", command=self._start_replay).pack(side=tk.LEFT, padx=8)
+        ttk.Button(btn_row, text="Start Hybrid Drive", command=self._start_replay).pack(side=tk.LEFT, padx=8)
         group.columnconfigure(1, weight=1)
 
         preview_group = ttk.LabelFrame(body, text="Route Preview", padding=8)
@@ -1443,7 +1470,7 @@ class MainWindow:
         if not self._visual_stream_allowed():
             return
         task_label = self.task_worker.label if self.task_worker is not None else ""
-        if task_label != "Hybrid Autorun":
+        if task_label != "Hybrid Drive":
             return
         if self._hybrid_local_guidance_enabled():
             return
@@ -1457,7 +1484,7 @@ class MainWindow:
         if now < self.camera_restart_backoff_until:
             return
         self.camera_restart_backoff_until = now + 3.0
-        self._log("Hybrid Autorun preview appears stale. Restarting raw UVC preview publisher...")
+        self._log("Hybrid Drive preview appears stale. Restarting raw UVC preview publisher...")
         self._stop_uvc_preview_publisher(log_message=False)
         if self.camera_monitor is not None:
             self.camera_monitor.reset()
@@ -1638,7 +1665,7 @@ class MainWindow:
         else:
             if self.task_worker is not None and self.task_worker.worker_id == worker_id:
                 self.task_worker = None
-        if label == "Hybrid Autorun" and code != 0 and self._hybrid_local_guidance_enabled():
+        if label == "Hybrid Drive" and code != 0 and self._hybrid_local_guidance_enabled():
             self._clear_camera_preview_only("Segmented preview unavailable")
         if stopped:
             self._log(f"{label} stopped with exit code {code}")
@@ -1657,7 +1684,7 @@ class MainWindow:
             and self._active_localization_worker() is None
         ):
             self._stop_uvc_preview_publisher(log_message=False)
-        if label in {"Mapping", "Path Recording", "Hybrid Autorun", "Record Localization", "Replay Localization", "Shared Localization"} and (
+        if label in {"Mapping", "Path Recording", "Hybrid Drive", "Record Localization", "Replay Localization", "Shared Localization"} and (
             (label in {"Record Localization", "Replay Localization", "Shared Localization"} and self._active_localization_worker() is None)
             or (label not in {"Record Localization", "Replay Localization", "Shared Localization"})
         ):
@@ -1748,22 +1775,22 @@ class MainWindow:
             return
         if self.replay_localization_text.get() != "Ready":
             self.pending_action = "replay"
-            self._log("Hybrid autorun will start automatically after localization becomes ready.")
+            self._log("Hybrid drive will start automatically after localization becomes ready.")
             return
         if not self.line_model_var.get().strip():
             messagebox.showwarning("No Line Model", "Set the linerun model path first.")
             return
         use_local_guidance = self._hybrid_local_guidance_enabled()
         if use_local_guidance:
-            self._log("Hybrid autorun requested. The active localization session will be reused, then the system will start linerun and blend local row guidance with global replay.")
+            self._log("Hybrid drive requested. The active localization session will be reused, then the system will start linerun and blend local row guidance with global mission tracking.")
             self._stop_uvc_preview_publisher(log_message=False)
             self._clear_camera_preview_only("Waiting for segmented preview")
         else:
-            self._log("Hybrid autorun requested. The active localization session will be reused, then the system will run pure global replay and keep the raw UVC preview visible.")
+            self._log("Hybrid drive requested. The active localization session will be reused, then the system will run pure global mission tracking and keep the raw UVC preview visible.")
             self._start_uvc_preview_publisher(auto=True)
         self._start_camera_monitor(auto=True)
         self._start_task(
-            "Hybrid Autorun",
+            "Hybrid Drive",
             [*self._hybrid_args(), "--db", str(map_path), "--mission", str(mission_path), "--base-frame", "odin1_base_link", "--localization-wait-sec", "60", "--reuse-localization"],
         )
 
@@ -1779,9 +1806,9 @@ class MainWindow:
 
     def _on_tab_changed(self, _event: object) -> None:
         current = self.notebook.tab(self.notebook.select(), "text")
-        if current in {"Path Recording", "Hybrid Autorun"}:
+        if current in {"Path Recording", "Hybrid Drive"}:
             self._ensure_localization_for_tab(auto=True)
-        if current in {"Hybrid Autorun", "Video Preview"}:
+        if current in {"Hybrid Drive", "Video Preview"}:
             self._start_camera_monitor(auto=True)
 
     def _delete_selected_map(self) -> None:
@@ -1994,7 +2021,7 @@ class MainWindow:
             else:
                 self._log("Stop requested for the current task.")
             self.task_worker.stop()
-            if self.task_worker.label in {"Mapping", "Path Recording", "Hybrid Autorun"}:
+            if self.task_worker.label in {"Mapping", "Path Recording", "Hybrid Drive"}:
                 self._stop_uvc_preview_publisher(log_message=False)
             return
         active = self._active_localization_worker()

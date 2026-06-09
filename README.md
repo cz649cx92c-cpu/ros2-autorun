@@ -1,8 +1,8 @@
 # autorun_final
 
-`autorun_final` 把两个现有工程接在一起：
+`autorun_final` 把定位、录制、混合驱动收成一个可直接使用的工程：
 
-- `autorun2` / Odin 全局定位与任务回放
+- Odin / 全局定位与任务执行
 - `linerun` / 行间局部中线约束与障碍物约束
 
 ## 设计原则
@@ -19,14 +19,14 @@
 ## 目录
 
 - 任务与日志写入 `autorun_final/`
-- Mission 录制仍复用 `autorun` 的录制逻辑，但定位会走 Odin
+- Mission 录制、定位、混合驱动都直接由 `autorun_final` 提供
 
 ## 常用命令
 
 ### 建图
 
 ```bash
-cd /root/ugv/autorun_final
+cd /home/orangepi/ugv/autorun_final
 python3 main.py map --map-name lab_map
 ```
 
@@ -34,24 +34,24 @@ python3 main.py map --map-name lab_map
 
 ```bash
 python3 main.py localization \
-  --db /root/ugv/autorun_final/maps/lab_map/lab_map.bin
+  --db /home/orangepi/ugv/autorun_final/maps/lab_map/lab_map.bin
 ```
 
 ### 录制全局任务
 
 ```bash
 python3 main.py record \
-  --db /root/ugv/autorun_final/maps/lab_map/lab_map.bin \
+  --db /home/orangepi/ugv/autorun_final/maps/lab_map/lab_map.bin \
   --mission-name mission_a
 ```
 
-### 混合自动运行
+### 混合驱动
 
 ```bash
-python3 main.py autorun \
-  --db /root/ugv/autorun_final/maps/lab_map/lab_map.bin \
-  --mission /root/ugv/autorun_final/missions/mission_a.json \
-  --line-model /root/ugv/line/models/your_model.rknn \
+python3 main.py drive \
+  --db /home/orangepi/ugv/autorun_final/maps/lab_map/lab_map.bin \
+  --mission /home/orangepi/ugv/autorun_final/missions/mission_a.json \
+  --line-model /home/orangepi/ugv/line/models/your_model.rknn \
   --line-require-npu \
   --line-source /dev/video0 \
   --line-classes 1 \

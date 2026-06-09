@@ -2,20 +2,22 @@
 from __future__ import annotations
 
 import argparse
-import logging
 import os
-import socket
 import signal
 import sys
 import time
 from pathlib import Path
 
 import cv2
+import rclpy
+from rclpy.executors import SingleThreadedExecutor
+from rclpy.node import Node
+from sensor_msgs.msg import CompressedImage
 
 
 def ensure_ros_python_available() -> None:
     for path in (
-        Path("/opt/ros/noetic/lib/python3/dist-packages"),
+        Path("/opt/ros/humble/lib/python3.10/site-packages"),
         Path("/usr/lib/python3/dist-packages"),
     ):
         text = str(path)
@@ -30,52 +32,10 @@ def normalize_device_path(source: str) -> str:
     return text
 
 
-def wait_for_ros_publisher(topic: str):
-    ensure_ros_python_available()
-    import rosgraph.roslogging  # type: ignore
-    import rospy  # type: ignore
-    from sensor_msgs.msg import CompressedImage  # type: ignore
-
-    for name, level in (
-        ("CRITICAL", logging.CRITICAL),
-        ("ERROR", logging.ERROR),
-        ("WARNING", logging.WARNING),
-        ("WARN", logging.WARNING),
-        ("INFO", logging.INFO),
-        ("DEBUG", logging.DEBUG),
-        ("NOTSET", logging.NOTSET),
-    ):
-        logging._nameToLevel.setdefault(name, level)
-        logging._levelToName.setdefault(level, name)
-
-    original_configure_logging = rosgraph.roslogging.configure_logging
-
-    def safe_configure_logging(*args, **kwargs):
-        try:
-            return original_configure_logging(*args, **kwargs)
-        except Exception:
-            ros_home = Path(os.environ.get("ROS_HOME", "/tmp/autorun_final_ros_home"))
-            log_dir = ros_home / "log"
-            log_dir.mkdir(parents=True, exist_ok=True)
-            logging.basicConfig(level=logging.INFO)
-            return str(log_dir / "rospy.log")
-
-    rosgraph.roslogging.configure_logging = safe_configure_logging
-    if not rospy.core.is_initialized():
-        rospy.init_node("autorun_final_uvc_preview", anonymous=True, disable_signals=True)
-    return rospy, rospy.Publisher(topic, CompressedImage, queue_size=1), CompressedImage
-
-
-def ros_master_is_ready(timeout_sec: float = 0.2) -> bool:
-    uri = os.environ.get("ROS_MASTER_URI", "http://localhost:11311")
-    try:
-        host_port = uri.split("://", 1)[1]
-        host, port_text = host_port.rsplit(":", 1)
-        port = int(port_text)
-        with socket.create_connection((host, port), timeout=timeout_sec):
-            return True
-    except Exception:
-        return False
+class PreviewPublisher(Node):
+    def __init__(self, topic: str) -> None:
+        super().__init__("autorun_final_uvc_preview")
+        self.publisher = self.create_publisher(CompressedImage, topic, 1)
 
 
 def open_capture(source: str, width: int, height: int, fps: float, fourcc: str) -> cv2.VideoCapture:
@@ -143,15 +103,16 @@ def main() -> int:
         args.camera_fourcc,
     )
     try:
-        while not stop_requested and not ros_master_is_ready():
-            time.sleep(0.3)
-        if stop_requested:
-            return 0
-        rospy, publisher, compressed_type = wait_for_ros_publisher(args.image_topic)
+        os.environ.setdefault("ROS_HOME", "/tmp/autorun_final_ros2_home")
+        rclpy.init()
+        node = PreviewPublisher(args.image_topic)
+        executor = SingleThreadedExecutor()
+        executor.add_node(node)
         min_interval = 0.0 if args.publish_fps <= 0 else (1.0 / float(args.publish_fps))
         last_publish_at = 0.0
         jpeg_quality = max(10, min(80, int(args.jpeg_quality)))
-        while not stop_requested and not rospy.is_shutdown():
+        while not stop_requested and rclpy.ok():
+            executor.spin_once(timeout_sec=0.0)
             ok, frame = capture.read()
             if not ok or frame is None:
                 time.sleep(0.05)
@@ -164,14 +125,21 @@ def main() -> int:
             if not ok_encoded:
                 time.sleep(0.02)
                 continue
-            msg = compressed_type()
-            msg.header.stamp = rospy.Time.now()
+            msg = CompressedImage()
+            msg.header.stamp = node.get_clock().now().to_msg()
             msg.format = "jpeg"
             msg.data = encoded.tobytes()
-            publisher.publish(msg)
+            node.publisher.publish(msg)
             last_publish_at = now
     finally:
         capture.release()
+        try:
+            executor.remove_node(node)
+            executor.shutdown()
+            node.destroy_node()
+            rclpy.shutdown()
+        except Exception:
+            pass
     return 0
 
 

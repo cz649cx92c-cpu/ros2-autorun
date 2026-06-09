@@ -16,37 +16,82 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import rclpy
+from geometry_msgs.msg import Twist
+from rclpy.executors import SingleThreadedExecutor
+from rclpy.node import Node
+from std_msgs.msg import String
+
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-import autorun.backend as core  # noqa: E402
+try:
+    import core_backend as core  # type: ignore # noqa: E402
+except ImportError:
+    import autorun.backend as core  # type: ignore # noqa: E402
 
 PROJECT_ROOT = Path(__file__).resolve().parent
-BASE_CATKIN_WS = Path("/root/catkin_ws")
-ODIN_ROOT = BASE_CATKIN_WS / "src" / "odin_ros_driver"
 VENDOR_ROOT = PROJECT_ROOT / "vendor"
 SHADOW_ODIN_ROOT = VENDOR_ROOT / "odin_ros_driver"
 SHADOW_ODIN_CONFIG = SHADOW_ODIN_ROOT / "config" / "control_command.yaml"
-SHADOW_ODIN_LAUNCH = SHADOW_ODIN_ROOT / "launch_ROS1" / "odin1_ros1.launch"
+SHADOW_ODIN_LAUNCH = SHADOW_ODIN_ROOT / "launch_ROS2" / "odin1_ros2.launch.py"
+SHADOW_ODIN_PACKAGE_ROS2 = SHADOW_ODIN_ROOT / "package_ros2.xml"
+SHADOW_ODIN_PACKAGE = SHADOW_ODIN_ROOT / "package.xml"
 MISSIONS_DIR = PROJECT_ROOT / "missions"
 LOG_DIR = PROJECT_ROOT / "logs"
 ROS_LOG_DIR = LOG_DIR / "ros"
 RUNTIME_DIR = PROJECT_ROOT / "runtime"
 TEMP_CONFIG_DIR = RUNTIME_DIR / "configs"
-SHADOW_CATKIN_WS = RUNTIME_DIR / "shadow_catkin_ws"
-SHADOW_CATKIN_SRC = SHADOW_CATKIN_WS / "src"
-SHADOW_CATKIN_SETUP = SHADOW_CATKIN_WS / "devel" / "setup.bash"
-SHADOW_HOST_SDK_BIN = SHADOW_CATKIN_WS / "devel" / "lib" / "odin_ros_driver" / "host_sdk_sample"
+SHADOW_COLCON_WS = RUNTIME_DIR / "shadow_ros2_ws"
+SHADOW_COLCON_SRC = SHADOW_COLCON_WS / "src"
+SHADOW_COLCON_INSTALL = SHADOW_COLCON_WS / "install" / "setup.bash"
+SHADOW_HOST_SDK_BIN = SHADOW_COLCON_WS / "install" / "lib" / "odin_ros_driver" / "host_sdk_sample"
 LINERUN_ROOT = ROOT / "linerun"
 LINERUN_PYTHON = Path("/opt/miniconda3/envs/py310/bin/python")
 LINERUN_GUI_CONFIG = LINERUN_ROOT / "plant_row_gui_config.json"
 
-for path in (MISSIONS_DIR, LOG_DIR, ROS_LOG_DIR, RUNTIME_DIR, TEMP_CONFIG_DIR, VENDOR_ROOT, SHADOW_CATKIN_SRC):
+for path in (MISSIONS_DIR, LOG_DIR, ROS_LOG_DIR, RUNTIME_DIR, TEMP_CONFIG_DIR, VENDOR_ROOT, SHADOW_COLCON_SRC):
     path.mkdir(parents=True, exist_ok=True)
 
 core.PROJECT_ROOT = PROJECT_ROOT
 core.MISSIONS_DIR = MISSIONS_DIR
 core.LOG_DIR = LOG_DIR
+
+
+class Ros2NodeThread:
+    _init_lock = threading.Lock()
+    _refcount = 0
+
+    def __init__(self, node_name: str) -> None:
+        with self._init_lock:
+            if not rclpy.ok():
+                rclpy.init(args=None)
+            self.__class__._refcount += 1
+        self.node = Node(node_name)
+        self.executor = SingleThreadedExecutor()
+        self.executor.add_node(self.node)
+        self.thread = threading.Thread(target=self.executor.spin, name=f"{node_name}-spin", daemon=True)
+        self.thread.start()
+
+    def close(self) -> None:
+        try:
+            self.executor.shutdown()
+        except Exception:
+            pass
+        try:
+            self.executor.remove_node(self.node)
+        except Exception:
+            pass
+        try:
+            self.node.destroy_node()
+        except Exception:
+            pass
+        if self.thread.is_alive():
+            self.thread.join(timeout=1.0)
+        with self._init_lock:
+            self.__class__._refcount = max(0, self.__class__._refcount - 1)
+            if self.__class__._refcount == 0 and rclpy.ok():
+                rclpy.shutdown()
 
 
 def install_signal_handlers() -> None:
@@ -69,33 +114,8 @@ def _replace_yaml_scalar(text: str, key: str, value: str) -> str:
 
 
 def sync_shadow_package() -> None:
-    if not SHADOW_ODIN_ROOT.exists():
-        shutil.copytree(
-            ODIN_ROOT,
-            SHADOW_ODIN_ROOT,
-            ignore=shutil.ignore_patterns(
-                ".git",
-                "__pycache__",
-                "build",
-                "devel",
-                "log",
-                "recorddata",
-                "map",
-                "*.pyc",
-                "*.o",
-            ),
-        )
-        core.log(f"Shadow odin_ros_driver initialized from {ODIN_ROOT}")
-    launch_text = SHADOW_ODIN_LAUNCH.read_text(encoding="utf-8")
-    launch_text, count = re.subn(
-        r"\s*<!-- Launch RViz with configuration -->\s*<node name=\"rviz\" pkg=\"rviz\" type=\"rviz\" args=\"-d \$\(arg rviz_config\)\" output=\"screen\"/>\s*",
-        "\n",
-        launch_text,
-        flags=re.MULTILINE,
-    )
-    if count:
-        SHADOW_ODIN_LAUNCH.write_text(launch_text, encoding="utf-8")
-        core.log("RViz launch node removed from the shadow odin_ros_driver launch file.")
+    if SHADOW_ODIN_PACKAGE_ROS2.exists():
+        shutil.copy2(SHADOW_ODIN_PACKAGE_ROS2, SHADOW_ODIN_PACKAGE)
     _ensure_shadow_workspace_built()
     core.log(f"Shadow odin_ros_driver prepared: {SHADOW_ODIN_ROOT}")
 
@@ -112,7 +132,7 @@ def _shadow_package_mtime() -> float:
 
 
 def _ensure_shadow_workspace_built() -> None:
-    package_link = SHADOW_CATKIN_SRC / "odin_ros_driver"
+    package_link = SHADOW_COLCON_SRC / "odin_ros_driver"
     if package_link.is_symlink():
         if package_link.resolve() != SHADOW_ODIN_ROOT.resolve():
             package_link.unlink()
@@ -135,9 +155,9 @@ def _ensure_shadow_workspace_built() -> None:
         "/bin/bash",
         "-lc",
         (
-            f"source /opt/ros/noetic/setup.bash && "
-            f"cd {SHADOW_CATKIN_WS} && "
-            "catkin_make --pkg odin_ros_driver -DPYTHON_EXECUTABLE=/usr/bin/python3"
+            f"source /opt/ros/humble/setup.bash && "
+            f"cd {SHADOW_COLCON_WS} && "
+            "colcon build --packages-select odin_ros_driver --merge-install"
         ),
     ]
     result = subprocess.run(
@@ -254,13 +274,13 @@ def request_map_save(target_file: Path, timeout_sec: float = 25.0, raw_log: Path
 def cleanup_stale_odin_processes() -> None:
     patterns = [
         "host_sdk_sample",
-        "odin1_ros1.launch",
+        "odin1_ros2.launch.py",
         "pcd2depth_node",
+        "pcd2depth_ros2_node",
         "cloud_reprojection_node",
+        "cloud_reprojection_ros2_node",
         "image_overlay_node",
-        "rviz",
-        "rosmaster",
-        "roscore",
+        "rviz2",
     ]
     found: list[str] = []
     for pattern in patterns:
@@ -308,16 +328,16 @@ class OdinConfigOverride:
 class OdinLaunchProcess(core.ManagedProcess):
     def __init__(self, config_path: Path, log_path: Path) -> None:
         del config_path
-        setup_bash = SHADOW_CATKIN_SETUP if SHADOW_CATKIN_SETUP.exists() else BASE_CATKIN_WS / "devel" / "setup.bash"
+        setup_bash = SHADOW_COLCON_INSTALL
         cmd = [
             "/bin/bash",
             "-lc",
             (
-                f"source /opt/ros/noetic/setup.bash && "
+                f"source /opt/ros/humble/setup.bash && "
                 f"source {setup_bash} && "
-                f"export ROS_PACKAGE_PATH={VENDOR_ROOT}:$ROS_PACKAGE_PATH && "
                 f"export ROS_LOG_DIR={ROS_LOG_DIR} && "
-                f"exec roslaunch {SHADOW_ODIN_LAUNCH}"
+                f"exec ros2 launch odin_ros_driver odin1_ros2.launch.py "
+                f"config_file:={SHADOW_ODIN_CONFIG} start_rviz:=false"
             ),
         ]
         super().__init__(cmd, PROJECT_ROOT, log_path)
@@ -476,18 +496,14 @@ def _linerun_drive_settings(config: dict[str, Any], *, reverse: bool, args: argp
 
 class LineRunRosBridge:
     def __init__(self, cmd_vel_topic: str, status_topic: str, drive_mode_topic: str) -> None:
-        self.rospy = core.ensure_ros_node("autorun_final_bridge")
-        from geometry_msgs.msg import Twist  # type: ignore
-        from std_msgs.msg import String  # type: ignore
-
-        self._string_type = String
         self._status_lock = threading.Lock()
         self._cmd_lock = threading.Lock()
         self._status = LineStatus()
         self._cmd = TwistCommand()
-        self._mode_pub = self.rospy.Publisher(drive_mode_topic, String, queue_size=1)
-        self.rospy.Subscriber(status_topic, String, self._on_status, queue_size=1)
-        self.rospy.Subscriber(cmd_vel_topic, Twist, self._on_cmd_vel, queue_size=1)
+        self._bridge = Ros2NodeThread("autorun_final_bridge")
+        self._mode_pub = self._bridge.node.create_publisher(String, drive_mode_topic, 10)
+        self._status_sub = self._bridge.node.create_subscription(String, status_topic, self._on_status, 10)
+        self._cmd_sub = self._bridge.node.create_subscription(Twist, cmd_vel_topic, self._on_cmd_vel, 10)
 
     def _on_status(self, msg) -> None:
         now = time.monotonic()
@@ -544,7 +560,7 @@ class LineRunRosBridge:
             "target_center_offset_px": float(target_center_offset_px),
             "vehicle_direction_angle_deg": float(vehicle_direction_angle_deg),
         }
-        self._mode_pub.publish(self._string_type(data=json.dumps(payload, ensure_ascii=True)))
+        self._mode_pub.publish(String(data=json.dumps(payload, ensure_ascii=True)))
 
     def status_snapshot(self) -> LineStatus:
         with self._status_lock:
@@ -571,6 +587,9 @@ class LineRunRosBridge:
         if age > 0.5:
             return TwistCommand(vx=cmd.vx, vy=cmd.vy, wz=cmd.wz, updated_at=cmd.updated_at, fresh=False)
         return cmd
+
+    def close(self) -> None:
+        self._bridge.close()
 
 
 class LineRunProcess(core.ManagedProcess):
@@ -1007,12 +1026,6 @@ def _compute_global_command(
         cmd_wz = core._clamp(heading_err_deg * 0.50, -6.0, 6.0)
     else:
         cmd_vx = core._clamp(cmd_vx, -0.16, 0.16)
-        if abs(lateral_err) > 0.05:
-            cmd_vx = core._clamp(cmd_vx, -0.10, 0.10)
-        if abs(lateral_err) > 0.08:
-            cmd_vx = core._clamp(cmd_vx, -0.07, 0.07)
-        if abs(lateral_err) > 0.11:
-            cmd_vx = core._clamp(cmd_vx, -0.05, 0.05)
         cmd_wz = core._clamp(
             heading_err_deg * 0.72 + lateral_err * 18.0,
             -min(wz_cap, 12.0),
@@ -1558,7 +1571,7 @@ def cmd_hybrid_autorun(args: argparse.Namespace) -> int:
                 upcoming_crab = core._find_future_gear_start(motions, start_index, "crab", limit=20)
                 if upcoming_crab is not None:
                     crab_entry = points[upcoming_crab]
-                    if pose.distance_to(crab_entry) <= 0.35:
+                    if pose.distance_to(crab_entry) <= 0.50:
                         crab_end = core._find_gear_segment_end(motions, upcoming_crab, "crab")
                         crab_active = core._find_first_active_crab_index(motions, upcoming_crab, crab_end)
                         crab_active_end = core._find_last_active_crab_index(motions, crab_active, crab_end)
@@ -1876,6 +1889,8 @@ def cmd_hybrid_autorun(args: argparse.Namespace) -> int:
         controller.close()
         if linerun_proc is not None:
             linerun_proc.stop()
+        if ros_bridge is not None:
+            ros_bridge.close()
         if session is not None:
             session.stop()
 
