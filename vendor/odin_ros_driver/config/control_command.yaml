@@ -6,7 +6,7 @@ register_keys:
   # 0: use odin internal system time as data time stamp, typical and recommended;
   # 1: use host ros time (upon receive) as data time stamp, only use if you specifically require this setup, not recommended for most users
   # 2: align odin1 time to host time, timestamp is the sensor data reception time on host time axis
-  use_host_ros_time: 2
+  use_host_ros_time: 0
 
   streamctrl: 1           # 0: off; 1: on
 
@@ -28,7 +28,7 @@ register_keys:
   # SDK IMU smooth sending feature
   # When enabled, SDK will send IMU data at precise intervals (default 400Hz) 
   # using a dedicated high-priority thread to reduce jitter and timing variance
-  enable_imu_smooth: 1
+  enable_imu_smooth: 0
 
   # SDK IMU smooth sending frequency in Hz (only effective when enable_imu_smooth = 1)
   imu_smooth_frequency: 400
