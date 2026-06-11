@@ -1398,10 +1398,11 @@ HTML_PAGE = """<!doctype html>
 
     function updateWorkflowState(data) {
       const ready = isLocalizationReady(data.localization_status);
+      const activeLocalizationMapId = data.active_localization_map_id || '';
       const canState = String(data.can_status || 'Unknown').toUpperCase();
       const canReady = ['UP', 'UNKNOWN'].includes(canState);
       const selectedMap = (data.maps || []).find(
-        item => item.id === data.selected_replay_map_id || item.id === data.selected_record_map_id
+        item => item.id === (activeLocalizationMapId || data.selected_replay_map_id || data.selected_record_map_id)
       );
       const selectedMission = (data.missions || []).find(item => item.id === data.selected_mission_id);
       document.getElementById('workflowGateSummary').textContent = ready ? 'Ready for record or drive' : 'Waiting for map lock';
@@ -1425,6 +1426,7 @@ HTML_PAGE = """<!doctype html>
       const recordingBtn = document.getElementById('recordingActionBtn');
       const driveBtn = document.getElementById('driveActionBtn');
       const missionSelect = document.getElementById('missionSelect');
+      const driveMapSelect = document.getElementById('driveMap');
       const canBtn = document.getElementById('canConnectBtn');
       const canTopBtn = document.getElementById('canConnectTopBtn');
       const deferredStage = document.getElementById('deferredStage');
@@ -1434,6 +1436,7 @@ HTML_PAGE = """<!doctype html>
       if (recordingBtn) recordingBtn.disabled = !ready && !recordingActive;
       if (driveBtn) driveBtn.disabled = !ready && !driveActive;
       if (missionSelect) missionSelect.disabled = !ready && !driveActive;
+      if (driveMapSelect) driveMapSelect.disabled = ready || driveActive;
       if (canBtn) {
         canBtn.textContent = canReady ? 'Reconnect CAN' : 'Connect CAN';
         canBtn.classList.toggle('secondary', canReady);
@@ -1446,6 +1449,7 @@ HTML_PAGE = """<!doctype html>
 
     function applyState(data) {
       stateCache = data;
+      const activeLocalizationMapId = data.active_localization_map_id || '';
       const localizationText = data.localization_status || 'Not started';
       document.getElementById('taskStatus').textContent = data.task_status || 'Idle';
       document.getElementById('localizationStatus').textContent = localizationText;
@@ -1456,14 +1460,14 @@ HTML_PAGE = """<!doctype html>
       document.getElementById('previewModeBadge').textContent = String(data.preview_source || 'Preview');
       document.getElementById('canStateSummary').textContent = data.can_status || 'Unknown';
 
-      setOptions('recordMap', data.maps || [], data.selected_record_map_id);
-      setOptions('driveMap', data.maps || [], data.selected_replay_map_id);
+      setOptions('recordMap', data.maps || [], activeLocalizationMapId || data.selected_record_map_id);
+      setOptions('driveMap', data.maps || [], activeLocalizationMapId || data.selected_replay_map_id);
       setOptions('libraryMapSelect', data.maps || [], data.selected_library_map_id);
       setOptions('missionSelect', data.missions || [], data.selected_mission_id);
       setOptions('libraryMissionSelect', data.library_missions || [], data.selected_library_mission_id);
 
       const selectedMap = (data.maps || []).find(
-        item => item.id === data.selected_replay_map_id || item.id === data.selected_record_map_id
+        item => item.id === (activeLocalizationMapId || data.selected_replay_map_id || data.selected_record_map_id)
       );
       const selectedMission = (data.missions || []).find(item => item.id === data.selected_mission_id);
       const libraryMap = (data.maps || []).find(item => item.id === data.selected_library_map_id);
@@ -2135,6 +2139,22 @@ class WebController:
     def _active_localization_worker(self) -> ProcessWorker | None:
         return self.replay_localization_worker or self.record_localization_worker
 
+    def _map_id_for_path(self, map_path: Path | None) -> str:
+        if map_path is None:
+            return ""
+        try:
+            resolved = map_path.resolve()
+        except Exception:
+            resolved = map_path
+        for map_id, candidate in self.map_paths.items():
+            try:
+                if candidate.resolve() == resolved:
+                    return map_id
+            except Exception:
+                if candidate == map_path:
+                    return map_id
+        return ""
+
     def _projection_args(self) -> list[str]:
         return [
             "--sensor-height-m", str(self.settings.get("sensor_height_m") or DEFAULT_SENSOR_HEIGHT_M),
@@ -2260,6 +2280,7 @@ class WebController:
             if map_path is None:
                 raise RuntimeError("No map selected.")
             self.selected_record_map_id = map_id
+            self.selected_replay_map_id = map_id
             self._start_shared_localization(map_path)
 
     def _start_shared_localization(self, map_path: Path, *, auto: bool = False) -> None:
@@ -2321,6 +2342,9 @@ class WebController:
 
     def start_drive(self, map_id: str, mission_id: str) -> None:
         with self.lock:
+            active_map_id = self._map_id_for_path(self.localization_map_path)
+            if active_map_id:
+                map_id = active_map_id
             map_path = self.map_paths.get(map_id)
             mission_path = self.mission_paths.get(mission_id)
             if map_path is None:
@@ -2381,6 +2405,10 @@ class WebController:
         if self._active_localization_worker() is None:
             return
         self.localization_status = "Ready"
+        active_map_id = self._map_id_for_path(self.localization_map_path)
+        if active_map_id:
+            self.selected_record_map_id = active_map_id
+            self.selected_replay_map_id = active_map_id
         if self.pending_action == "record":
             self.pending_action = None
             self.start_recording(self.selected_record_map_id, self.mission_name)
@@ -2499,6 +2527,7 @@ class WebController:
                 ],
                 "selected_record_map_id": self.selected_record_map_id,
                 "selected_replay_map_id": self.selected_replay_map_id,
+                "active_localization_map_id": self._map_id_for_path(self.localization_map_path),
                 "selected_mission_id": self.selected_mission_id,
                 "selected_library_map_id": self.selected_library_map_id,
                 "selected_library_mission_id": self.selected_library_mission_id,

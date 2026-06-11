@@ -842,6 +842,19 @@ def _find_next_reverse_index(
     return None
 
 
+def _find_next_4t4d_index(
+    motions: list[dict[str, Any]],
+    start_index: int,
+    *,
+    limit: int = 64,
+) -> int | None:
+    end = min(len(motions), start_index + max(1, limit))
+    for idx in range(max(0, start_index), end):
+        if core._resolve_replay_gear(motions[idx], None) == "4t4d":
+            return idx
+    return None
+
+
 def _find_recent_reverse_index(
     motions: list[dict[str, Any]],
     start_index: int,
@@ -911,6 +924,18 @@ def _crab_reference_vy(
     if abs(segment_lateral) >= 0.02:
         return math.copysign(0.12, segment_lateral)
     return 0.0
+
+
+def _crab_axis_error(
+    pose: core.Pose2D,
+    ref_point: core.Pose2D,
+    target: core.Pose2D,
+) -> float:
+    axis_dx = target.x - ref_point.x
+    axis_dy = target.y - ref_point.y
+    if abs(axis_dy) >= abs(axis_dx):
+        return target.y - pose.y
+    return target.x - pose.x
 
 
 def _crab_motion_active(motion: dict[str, Any]) -> bool:
@@ -1061,24 +1086,20 @@ def _compute_global_command(
         if abs(cmd_vy) < 0.06 and abs(axis_err) > 0.12:
             crab_floor = min(vy_cap, max(0.12, min(recorded_vy_abs if recorded_vy_abs > 0.03 else 0.16, 0.18)))
             cmd_vy = math.copysign(crab_floor, axis_sign)
-        cmd_wz = core._clamp(heading_err_deg * 0.50, -6.0, 6.0)
+        # Keep row-switch motion as pure lateral travel. Mixing a large body yaw
+        # rate into FW-mini crab mode makes the wheel angle hunt between 0/90 deg.
+        cmd_wz = 0.0
     else:
         cmd_vx = core._clamp(cmd_vx, -0.16, 0.16)
         reversing = _safe_float(motion.get("vx"), 0.0) < -0.03
-        reverse_cross_target_m = 0.03
         if reversing:
             forward_err, lateral_err = _path_frame_error(pose, target, tracking_heading)
             heading_err_deg = math.degrees(core.normalize_angle(tracking_heading - pose.yaw))
-            reverse_vx_cap = min(vx_cap, 0.22)
-            cmd_vx = core._clamp(forward_err * 0.45, -reverse_vx_cap, reverse_vx_cap)
-        heading_gain = 0.95 if reversing else 0.72
-        if reversing:
-            lateral_gain = 42.0 if abs(lateral_err) > reverse_cross_target_m else 14.0
-            lateral_term = -lateral_err * lateral_gain
-        else:
-            lateral_gain = 18.0
-            lateral_term = lateral_err * lateral_gain
-        wz_limit = min(wz_cap, 16.0 if reversing else 12.0)
+            cmd_vx = core._clamp(forward_err * 0.75, -0.16, 0.16)
+        heading_gain = 0.72
+        lateral_gain = 18.0
+        lateral_term = lateral_err * lateral_gain
+        wz_limit = min(wz_cap, 12.0)
         cmd_wz = core._clamp(
             heading_err_deg * heading_gain + lateral_term,
             -wz_limit,
@@ -1604,14 +1625,10 @@ def cmd_hybrid_autorun(args: argparse.Namespace) -> int:
                             )
             if send_state.crab_locked_until >= start_index and send_state.crab_target_index >= 0:
                 gear = "crab"
-                target_index = core._select_crab_progress_target(
-                    start_index,
-                    send_state.crab_locked_until,
-                    max(start_index + 1, send_state.crab_target_index),
-                )
+                target_index = max(start_index + 1, min(len(points) - 1, send_state.crab_target_index))
                 target = points[target_index]
                 motion = motions[target_index]
-                if core._resolve_replay_gear(motion, None) != "crab":
+                if target_index >= len(points):
                     send_state.crab_locked_until = -1
                     send_state.crab_target_index = -1
                     gear = core._resolve_replay_gear(motion_here, current_gear)
@@ -1647,13 +1664,12 @@ def cmd_hybrid_autorun(args: argparse.Namespace) -> int:
                         crab_end = core._find_gear_segment_end(motions, upcoming_crab, "crab")
                         crab_active = core._find_first_active_crab_index(motions, upcoming_crab, crab_end)
                         crab_active_end = core._find_last_active_crab_index(motions, crab_active, crab_end)
+                        next_4t4d_index = _find_next_4t4d_index(motions, crab_active_end + 1, limit=72)
                         send_state.crab_locked_until = crab_active_end
-                        send_state.crab_target_index = max(crab_active, crab_active_end - 1)
-                        target_index = core._select_crab_progress_target(
-                            start_index,
-                            crab_active_end,
-                            send_state.crab_target_index,
-                        )
+                        send_state.crab_target_index = next_4t4d_index if next_4t4d_index is not None else crab_active_end
+                        send_state.crab_best_dist = float("inf")
+                        send_state.crab_diverge_count = 0
+                        target_index = send_state.crab_target_index
                         target = points[target_index]
                         motion = motions[target_index]
                         gear = "crab"
@@ -1692,21 +1708,6 @@ def cmd_hybrid_autorun(args: argparse.Namespace) -> int:
                 current_gear = gear
 
             if gear == "crab":
-                if (
-                    send_state.crab_locked_until >= 0
-                    and target_index <= start_index
-                    and start_index >= send_state.crab_locked_until
-                    and dist < 0.20
-                ):
-                    send_state.crab_locked_until = -1
-                    send_state.crab_target_index = -1
-                    send_state.crab_best_dist = float("inf")
-                    send_state.crab_diverge_count = 0
-                    start_index = min(len(points) - 1, start_index + 1)
-                    current_gear = None
-                    send_state.last_sent_gear = None
-                    core.log(f"Hybrid autorun crab segment finished at sample #{start_index - 1}. Returning to 4t4d tracking.")
-                    continue
                 if dist + 0.03 < send_state.crab_best_dist:
                     send_state.crab_best_dist = dist
                     send_state.crab_diverge_count = 0
@@ -1727,32 +1728,23 @@ def cmd_hybrid_autorun(args: argparse.Namespace) -> int:
                     current_gear = None
                     send_state.last_sent_gear = None
                     continue
-                ref_point = points[start_index]
-                axis_dx = target.x - ref_point.x
-                axis_dy = target.y - ref_point.y
                 dist = pose.distance_to(target)
-                if abs(axis_dy) >= abs(axis_dx):
-                    if core._axis_progress_reached(pose.y, target.y, axis_dy, 0.10):
-                        start_index = min(len(points) - 1, target_index + 1)
-                        if start_index > send_state.crab_locked_until:
-                            send_state.crab_locked_until = -1
-                            send_state.crab_target_index = -1
-                            send_state.crab_best_dist = float("inf")
-                            send_state.crab_diverge_count = 0
-                            current_gear = None
-                            send_state.last_sent_gear = None
-                        continue
-                else:
-                    if core._axis_progress_reached(pose.x, target.x, axis_dx, 0.10):
-                        start_index = min(len(points) - 1, target_index + 1)
-                        if start_index > send_state.crab_locked_until:
-                            send_state.crab_locked_until = -1
-                            send_state.crab_target_index = -1
-                            send_state.crab_best_dist = float("inf")
-                            send_state.crab_diverge_count = 0
-                            current_gear = None
-                            send_state.last_sent_gear = None
-                        continue
+                ref_index = max(0, min(start_index, len(points) - 1))
+                axis_err = _crab_axis_error(pose, points[ref_index], target)
+                reached_crab_exit = dist <= 0.20 or abs(axis_err) <= 0.20
+                if reached_crab_exit:
+                    start_index = min(
+                        len(points) - 1,
+                        max(send_state.crab_locked_until + 1, send_state.crab_target_index),
+                    )
+                    send_state.crab_locked_until = -1
+                    send_state.crab_target_index = -1
+                    send_state.crab_best_dist = float("inf")
+                    send_state.crab_diverge_count = 0
+                    current_gear = None
+                    send_state.last_sent_gear = None
+                    core.log(f"Hybrid autorun crab segment finished near sample #{start_index - 1}. Returning to 4t4d tracking.")
+                    continue
                 if near_finish and dist < 0.10:
                     core._hold_current_gear_stop(controller, send_state, current_gear)
                     core.log(f"Hybrid autorun reached final area near mission end (dist={dist:.2f}). Stopping without final alignment.")
@@ -1763,10 +1755,10 @@ def cmd_hybrid_autorun(args: argparse.Namespace) -> int:
                 yaw_err = core.normalize_angle(tracking_heading - pose.yaw)
                 path_along_err, path_cross_err = _path_frame_error(pose, target, tracking_heading)
                 passed_target = (not reversing_mode) and path_along_err < -0.03 and abs(path_cross_err) < 0.12
-                reverse_heading_ok = abs(math.degrees(yaw_err)) < 20.0
-                reverse_cross_ok = abs(path_cross_err) < 0.03
-                reverse_passed_target = reversing_mode and path_along_err > 0.02 and reverse_cross_ok
-                reverse_reached_target = reversing_mode and dist < 0.55 and reverse_cross_ok and reverse_heading_ok
+                reverse_heading_ok = abs(math.degrees(yaw_err)) < 12.0
+                reverse_cross_ok = abs(path_cross_err) < 0.12
+                reverse_passed_target = reversing_mode and path_along_err > 0.03 and reverse_cross_ok
+                reverse_reached_target = reversing_mode and dist < 0.12 and reverse_cross_ok and reverse_heading_ok
                 if (
                     (not reversing_mode and dist < 0.12 and abs(math.degrees(yaw_err)) < 12.0)
                     or passed_target
@@ -1818,9 +1810,6 @@ def cmd_hybrid_autorun(args: argparse.Namespace) -> int:
                 send_state,
                 tracking_heading,
             )
-            if reversing_mode:
-                reverse_turn_scale, reverse_turn_cap = _reverse_entry_turn_scale(dist_since_reverse_start)
-                g_wz = core._clamp(g_wz * reverse_turn_scale, -reverse_turn_cap, reverse_turn_cap)
             if near_finish and dist < 0.10:
                 core._hold_current_gear_stop(controller, send_state, current_gear)
                 core.log(f"Hybrid autorun reached final area near mission end (dist={dist:.2f}). Stopping without final alignment.")

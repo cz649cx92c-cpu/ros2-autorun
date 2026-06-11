@@ -1129,7 +1129,8 @@ def _send_drive(
         # both body and steering controllers to the same gear with zero motion
         # before sending actual movement commands.
         controller.send_body(BodyCommand(gear=gear, vx=0.0, vy=0.0, wz=0.0))
-        controller.send_steering(SteeringCommand(gear=gear, speed=0.0, angle=0.0))
+        if gear != 'crab':
+            controller.send_steering(SteeringCommand(gear=gear, speed=0.0, angle=0.0))
         state.last_vx = 0.0
         state.last_vy = 0.0
         state.last_wz = 0.0
@@ -1140,7 +1141,7 @@ def _send_drive(
         # while we still expect an active driving mode, resynchronize the gear
         # before sending the next motion command.
         controller.send_body(BodyCommand(gear=gear, vx=0.0, vy=0.0, wz=0.0))
-        if gear != '4t4d':
+        if gear not in {'4t4d', 'crab'}:
             controller.send_steering(SteeringCommand(gear=gear, speed=0.0, angle=0.0))
         state.last_cmd_at = 0.0
     motion_active = gear not in {'park', 'neutral'} and any(abs(v) > 1e-6 for v in (vx, vy, wz))
@@ -1191,12 +1192,9 @@ def _send_drive(
 
     body_vx, body_vy, body_wz = vx, vy, wz
     if gear == 'crab':
-        target_angle, target_speed = _normalize_crab_target(vx, vy)
-        if abs(target_speed) < 0.02:
-            controller.send_steering(SteeringCommand(gear='crab', speed=0.0, angle=0.0))
-        else:
-            angle = _slew_steer_angle(state, target_angle)
-            controller.send_steering(SteeringCommand(gear='crab', speed=target_speed, angle=angle))
+        # Match the stable follow/web control path: pure lateral motion is
+        # driven by a single body CtrlCmd in gear 8. Sending a parallel
+        # steering command here makes this chassis drop out of crab and hunt.
         controller.send_body(
             BodyCommand(
                 gear=gear,
