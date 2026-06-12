@@ -855,6 +855,38 @@ def _find_next_4t4d_index(
     return None
 
 
+def _find_forward_resume_index(
+    points: list[core.Pose2D],
+    motions: list[dict[str, Any]],
+    start_index: int,
+    pose: core.Pose2D,
+    *,
+    limit: int = 24,
+) -> int:
+    if not points:
+        return 0
+    start = max(0, min(start_index, len(points) - 1))
+    end = min(len(points), start + max(1, limit))
+    best_idx = start
+    best_dist = float("inf")
+    for idx in range(start, end):
+        if core._resolve_replay_gear(motions[min(idx, len(motions) - 1)], None) != "4t4d":
+            continue
+        cur = points[idx]
+        dx = cur.x - pose.x
+        dy = cur.y - pose.y
+        # Keep only targets that are in front of the chassis heading so we do
+        # not snap back to the first point of the next row and oscillate.
+        forward_proj = math.cos(pose.yaw) * dx + math.sin(pose.yaw) * dy
+        if forward_proj < -0.05:
+            continue
+        dist = pose.distance_to(cur)
+        if dist < best_dist:
+            best_dist = dist
+            best_idx = idx
+    return best_idx
+
+
 def _find_recent_reverse_index(
     motions: list[dict[str, Any]],
     start_index: int,
@@ -1656,6 +1688,20 @@ def cmd_hybrid_autorun(args: argparse.Namespace) -> int:
                 target = points[target_index]
                 motion = motions[target_index]
                 gear = core._resolve_replay_gear(motion, current_gear)
+            if gear == "crab" and (
+                send_state.crab_locked_until < start_index or send_state.crab_target_index < 0
+            ):
+                crab_end = core._find_gear_segment_end(motions, start_index, "crab")
+                crab_active = core._find_first_active_crab_index(motions, start_index, crab_end)
+                crab_active_end = core._find_last_active_crab_index(motions, crab_active, crab_end)
+                next_4t4d_index = _find_next_4t4d_index(motions, crab_active_end + 1, limit=72)
+                send_state.crab_locked_until = crab_active_end
+                send_state.crab_target_index = next_4t4d_index if next_4t4d_index is not None else crab_active_end
+                send_state.crab_best_dist = float("inf")
+                send_state.crab_diverge_count = 0
+                target_index = max(start_index, min(len(points) - 1, send_state.crab_target_index))
+                target = points[target_index]
+                motion = motions[target_index]
             if gear != "crab":
                 upcoming_crab = core._find_future_gear_start(motions, start_index, "crab", limit=20)
                 if upcoming_crab is not None:
@@ -1733,9 +1779,16 @@ def cmd_hybrid_autorun(args: argparse.Namespace) -> int:
                 axis_err = _crab_axis_error(pose, points[ref_index], target)
                 reached_crab_exit = dist <= 0.20 or abs(axis_err) <= 0.20
                 if reached_crab_exit:
-                    start_index = min(
+                    resume_seed = min(
                         len(points) - 1,
                         max(send_state.crab_locked_until + 1, send_state.crab_target_index),
+                    )
+                    start_index = _find_forward_resume_index(
+                        points,
+                        motions,
+                        resume_seed,
+                        pose,
+                        limit=24,
                     )
                     send_state.crab_locked_until = -1
                     send_state.crab_target_index = -1
